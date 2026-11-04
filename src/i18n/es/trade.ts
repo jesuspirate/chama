@@ -11,6 +11,10 @@ export const trade: Record<string, string> = {
   "trade.detailsInChat": "Pide al vendedor los datos de pago por chat antes de enviar dinero.",
 
   "trade.lockReabsorbed": "Tus {amount} sats están de vuelta en tu cartera.",
+
+  "trade.sharesWaitingFunder": "Tus sats están enviados. El intercambio empieza cuando la otra parte acepte.",
+
+  "trade.sharesWaitingOther": "Los sats van en camino, pero aún no están retenidos para este intercambio. No envíes dinero ni entregues nada todavía.",
   "trade.responseHours": "{count} horas",
   "trade.responseDays": "{count} días",
   "trade.arbiterNoStake": "No se encontró una garantía verificada de {name}.",

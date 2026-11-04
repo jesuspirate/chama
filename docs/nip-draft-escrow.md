@@ -83,6 +83,7 @@ must survive relays intact; nothing in it may be replaced.
 | `8108` | CHAT | no | encrypted envelope |
 | `8114` | SETTLEMENT | no | encrypted envelope (on-chain module) |
 | `8117` | SETTLEMENT_STALLED | yes | encrypted envelope (on-chain module) |
+| `8118` | LOCK_STEP | yes | plaintext JSON (shares inside are NIP-44) |
 
 `8109`–`8113` and `8115`–`8116` are reserved for extensions (subscriptions,
 tranches, arbiter premiums) that are out of scope for this NIP.
@@ -253,6 +254,48 @@ Only before LOCK. `CREATED → CANCELLED`.
 { "type": "escrow:cancel", "cancellerRole": "seller",
   "reason": "Sold elsewhere", "cancelledAt": 1790000050 }
 ```
+
+### LOCK_STEP (`8118`): refused-lock rules
+
+In force for trades whose CREATE is signed at or after `2027-02-01T00:00:00Z`.
+Older trades keep the rules they were created under, and a reader ignores
+LOCK_STEP on them.
+
+A LOCK may carry `"withheldShares": true`. Then only the funder's own share
+has ciphertext (to the funder alone); the other two carry an empty
+`encryptedFor` and a `commitment`, the hex SHA-256 of
+`chama-share-v1|<d>|<notesHash>|<shareIndex>|<share plaintext>`. A trade
+whose LOCK withheld shares is not funded for anyone but the funder until the
+release below; votes before it are ignored.
+
+```jsonc
+{ "type": "escrow:lock_step", "step": "accept",   "lockEventId": "<LOCK id>" }  // e-tag: the LOCK
+{ "type": "escrow:lock_step", "step": "release",  "lockEventId": "<LOCK id>",
+  "shares": [ /* the two withheld shares, same shape as LOCK shares */ ] }      // e-tag: the accept
+{ "type": "escrow:lock_step", "step": "withdraw", "lockEventId": "<LOCK id>" }  // e-tag: the LOCK
+```
+
+- **accept** is signed by the principal who did not fund. Because it names the
+  LOCK's id, it was signed after the LOCK whatever its `created_at` says.
+  Replay sets aside every CANCEL signed by someone who accepted an ecash LOCK
+  in the read. A cancel dated before a LOCK its author had already seen can
+  then no longer refuse it. Valid on any ecash LOCK of a gated trade.
+- **release** is signed by the funder after the accept. The buyer's or
+  seller's share goes to that principal alone; the arbiter share goes to the
+  seated arbiter (plus pool backups when `arbiterPoolShare`) and never to a
+  principal. Each recipient checks its plaintext against the commitment.
+- **withdraw** is signed by the funder of a withheld LOCK. If the read holds
+  no release from the funder for that LOCK, replay sets the LOCK and every
+  step naming it aside and the trade reads as never locked; the LOCK is
+  reported as refused (`WITHDRAWN_BEFORE_ACCEPT`) so the funder can take the
+  notes back. A release always outranks a withdraw.
+
+LOCK_STEP events never become the chain tip: later events reply to the LOCK
+(or whatever came before), so a reader that does not know `8118` still finds
+every predecessor. Circle shares do not use these steps.
+
+A refused withheld LOCK (cancelled before it, or order not finalized) never
+gave the seller or arbiter a share, so they cannot rebuild the notes.
 
 ### CHAT (`8108`)
 

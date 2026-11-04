@@ -19,6 +19,8 @@ import {
   type Outcome,
 } from "./types.js";
 import { payoutRecipientFor } from "./recipients.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 
 export const HOLDER_ONLY_SHARE_POLICY = "holder-only-v1" as const;
 
@@ -141,4 +143,26 @@ export function collectClaimEnvelopeCandidates(
     });
   }
   return candidates;
+}
+
+// ── #43 withheld shares ────────────────────────────────────────────────────
+
+/** Commitment to one withheld share, carried in the LOCK in place of its
+ *  ciphertext. `plaintext` is the exact string the funder later encrypts in
+ *  the RELEASE (the serialized SSS share). Domain-separated and bound to the
+ *  trade, the funded notes and the share slot, so a commitment cannot be
+ *  replayed onto another trade, lock or holder. */
+export function shareCommitment(escrowId: string, notesHash: string, shareIndex: number, plaintext: string): string {
+  return bytesToHex(sha256(new TextEncoder().encode(
+    `chama-share-v1|${escrowId}|${notesHash}|${shareIndex}|${plaintext}`)));
+}
+
+/** True when a released share's plaintext matches the LOCK's commitment.
+ *  Absent commitment ⇒ not a withheld share ⇒ nothing to check. */
+export function releasedShareMatches(
+  state: Pick<EscrowState, "id" | "lock">, shareIndex: number, plaintext: string,
+): boolean {
+  const commitment = state.lock.withheld?.commitments[String(shareIndex)];
+  if (!commitment) return true;
+  return !!state.lock.notesHash && shareCommitment(state.id, state.lock.notesHash, shareIndex, plaintext) === commitment;
 }

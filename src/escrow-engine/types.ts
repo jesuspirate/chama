@@ -170,6 +170,13 @@ export enum EscrowEventKind {
   CHILD_KEY = 38116,
   /** Winner requests co-signing of an already agreed, stalled payout. */
   SETTLEMENT_STALLED = 38117,
+  /** #43 refused-lock rules (trades created from WITHHELD_SHARES_CREATE_AT):
+   *  one kind, three steps on an accepted ecash LOCK. "accept" is signed by
+   *  the principal who did not fund and names the LOCK; "release" is the
+   *  funder sending the two withheld shares after that accept; "withdraw" is
+   *  the funder taking a withheld LOCK back before release. See
+   *  roadmap/refused-lock-design.md. */
+  LOCK_STEP = 38118,
 }
 
 // ── Valid State Transitions ───────────────────────────────────────────────
@@ -517,6 +524,11 @@ export interface JoinPayload {
 export interface LockShareEntry {
   shareIndex: number;
   encryptedFor: Record<string, string>;
+  /** #43 withheld shares: on a LOCK with `withheldShares`, each share the
+   *  funder holds back carries an empty `encryptedFor` and this commitment
+   *  (see shareCommitment in holder-shares.ts). The RELEASE later carries the
+   *  ciphertext; each recipient checks its plaintext against this. */
+  commitment?: string;
 }
 
 export type MenuItemKind = "exchange-bracket" | "bill" | "loan" | "market-item";
@@ -680,6 +692,12 @@ export interface LockPayload {
    *  legacy 4h ceiling, byte-identical to pre-v2.3 behavior. Old clients
    *  ignore the field. */
   substitutionGraceSeconds?: number;
+  /** #43: when true, only the funder's own share carries ciphertext; the
+   *  other two carry a `commitment` and are sent by a later LOCK_STEP
+   *  "release" once the other principal has accepted this LOCK. Valid only
+   *  on trades created from WITHHELD_SHARES_CREATE_AT. Absent ⇒ every share
+   *  is in this LOCK (every lock before the rule). */
+  withheldShares?: boolean;
   /** Breakdown of amounts (2-way split since v0.1.71) */
   sellerReceivesMsats: number;
   arbiterFeeMsats: number;
@@ -973,7 +991,16 @@ export type EscrowPayload =
   | SubscribePayload
   | PeriodReleasePayload
   | PlanStartPayload
-  | ChildKeyPayload;
+  | ChildKeyPayload
+  | LockStepPayload;
+
+/** #43 LOCK_STEP payload. Every step names the LOCK it is about; the e-tag
+ *  carries the causal predecessor (accept and withdraw reply to the LOCK,
+ *  release replies to the accept). */
+export type LockStepPayload =
+  | { type: "escrow:lock_step"; step: "accept"; lockEventId: string }
+  | { type: "escrow:lock_step"; step: "release"; lockEventId: string; shares: LockShareEntry[] }
+  | { type: "escrow:lock_step"; step: "withdraw"; lockEventId: string };
 
 // ── Raw Nostr Event (minimal, from nostr-tools) ──────────────────────────
 
@@ -1036,7 +1063,7 @@ export interface EscrowState {
   /** Positively refused signed ecash LOCKs, outside committed custody. */
   /** Device-local saved funding for a refused LOCK; never consensus custody. */
   rejectedLockRecovery?: { eventId: string; pubkey: string; amountMsats: number };
-  rejectedLocks?: { event: ParsedEscrowEvent<LockPayload>; code: "ORDER_NOT_FINALIZED" | "CANCELLED_BEFORE_LOCK" }[];
+  rejectedLocks?: { event: ParsedEscrowEvent<LockPayload>; code: "ORDER_NOT_FINALIZED" | "CANCELLED_BEFORE_LOCK" | "WITHDRAWN_BEFORE_ACCEPT" }[];
   /** Rejected advisory transitions retained for an honest reconstruction report. */
   replayNotes?: ReplayNote[];
   /** Unique escrow identifier (d-tag value) */
@@ -1263,6 +1290,21 @@ export interface EscrowState {
     /** Menu basket captured by LOCK. Null/undefined means legacy
      *  single-offer escrow. */
     selectedItems?: SelectedMenuItem[];
+    /** #43: the other principal's LOCK_STEP "accept" of this LOCK. Once set,
+     *  their own CANCEL can never refuse this LOCK. Absent on every trade
+     *  created before WITHHELD_SHARES_CREATE_AT. */
+    acceptedBy?: string;
+    acceptEventId?: string;
+    /** #43: present when the LOCK withheld two shares. `releaseEventId` is set
+     *  once the funder's RELEASE merged them into `shares`; until then the trade
+     *  is "funding sent, waiting", nobody but the funder holds a share, and
+     *  votes are set aside. */
+    withheld?: {
+      lockerPubkey: string;
+      lockerShareIndex: number;
+      commitments: Record<string, string>;
+      releaseEventId?: string;
+    };
   };
 
   /** Claim details */

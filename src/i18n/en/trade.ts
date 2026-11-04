@@ -11,6 +11,10 @@ export const trade: Record<string, string> = {
   "trade.detailsInChat": "Ask the seller for payment details in chat before sending money.",
 
   "trade.lockReabsorbed": "Your {amount} sats are back in your wallet.",
+
+  "trade.sharesWaitingFunder": "Your sats are sent. The trade starts once the other side accepts.",
+
+  "trade.sharesWaitingOther": "The sats are on their way but not held for this trade yet. Don't send money or deliver anything yet.",
   "trade.responseHours": "{count} hours",
   "trade.responseDays": "{count} days",
   "trade.arbiterNoStake": "{name} has no bond",

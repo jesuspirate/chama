@@ -1,4 +1,5 @@
 import { TradePaymentDetailsChoice, BuyerPaymentDetails } from '../components/TradePaymentDetails.js';
+import { WithheldSharesNotice } from "../components/WithheldSharesNotice.js";
 import { matchingTradeHandles, needsTradePaymentDetails, tradeCashDetailsVisible } from '../../payments/trade-payment-details.js';
 import { TradeCustody } from "../components/MoneyCustody.js";
 import { HoldToConfirm, buttonStyle } from "../components/Button.js";
@@ -823,6 +824,7 @@ export function LiveTradeSurface({
   return (
     <div ref={rootRef} className="lts-root" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: T.bg, paddingBottom: 12 }}>
       {orderMismatchesListing && state.participants[Role.SELLER] === pubkey && <OrderMismatchBanner />}
+      <WithheldSharesNotice state={state} pubkey={pubkey} t={tr} />
       {state.rejectedLockRecovery?.pubkey === pubkey && onReclaimRejectedLock &&
         <RejectedLockRefund amountMsats={state.rejectedLockRecovery.amountMsats} onReclaim={() => onReclaimRejectedLock(state.id)} />}
       {reabsorbedLockAmount(state.id) && <p>{tr("trade.lockReabsorbed", {amount:Math.floor(reabsorbedLockAmount(state.id)! / 1000).toLocaleString()})}</p>}

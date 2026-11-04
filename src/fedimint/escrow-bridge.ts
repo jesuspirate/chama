@@ -65,6 +65,7 @@ import {
   holderRoleForShareIndex,
   shareIndexForRole,
   collectClaimEnvelopeCandidates,
+  releasedShareMatches,
 } from "../escrow-engine/holder-shares.js";
 import { arbiterPriorityOrder, arbiterShareRecipientsFor } from "../escrow-engine/arbiter-substitution.js";
 import { getSavedHandle } from "../payments/saved-handles.js";
@@ -1019,7 +1020,14 @@ export class EscrowFedimintBridge {
         throw new Error("Can't find your share of this trade. Make sure you're on Chama v2.x.x or higher and let it finish syncing — if the other side is on an older version, everyone needs to update for the trade to complete.");
       }
       // LOCK share: locker is the sender.
-      decryptedMyShare = await this.decryptShareDual(ownEntry, myPubkey, lockerPubkey);
+      const own = await this.decryptShareText(ownEntry.encryptedFor[myPubkey], lockerPubkey);
+      decryptedMyShare = own.share;
+      // #43: a share that arrived in the funder's RELEASE must be the one the
+      // LOCK committed to. Nothing has moved yet; refuse before any combine.
+      if (state.lock.withheld && ownShareIndex !== state.lock.withheld.lockerShareIndex
+          && !releasedShareMatches(state, ownShareIndex, own.plaintext)) {
+        throw new Error("The share the funder released doesn't match what they committed to when locking. Nothing was claimed.");
+      }
 
       // VOTE share: scan for agreeing voters' shares routed to me — but each
       // must be a DISTINCT share from my own. The winner usually also voted, and
@@ -1521,31 +1529,13 @@ export class EscrowFedimintBridge {
 
   /** Decrypt an SSS share from a sender */
   private async decryptShare(encryptedShare: string, senderPubkey: string): Promise<SSSShare> {
-    // In dev/plaintext mode, shares are not encrypted — try parsing directly first
-    let decrypted: string;
-    let plaintext = false;
-    try {
-      const parsed = JSON.parse(encryptedShare);
-      plaintext = !!parsed && (parsed.index !== undefined || parsed.data !== undefined);
-    } catch { /* ciphertext */ }
-    if (plaintext) decrypted = encryptedShare;
-    else {
-      try { decrypted = await this.signer.nip44Decrypt(encryptedShare, senderPubkey); }
-      catch (error) {
-        if (isSignerApprovalError(error)) throw error;
-        console.warn("[chama] Share decrypt failed, using as-is:", encryptedShare.slice(0, 30));
-        decrypted = encryptedShare;
-      }
-    }
-    // Try parsing as JSON (real SSS shares are JSON objects)
-    try {
-      return JSON.parse(decrypted) as SSSShare;
-    } catch {
-      // Not JSON — simulated or raw share string
-      // Wrap it as a minimal SSSShare-like object so downstream code can handle it
-      console.warn("[chama] Share is not JSON, wrapping as raw:", decrypted.slice(0, 30));
-      return { index: 0, data: decrypted } as unknown as SSSShare;
-    }
+    return (await decryptShareWithSigner(this.signer, encryptedShare, senderPubkey)).share;
+  }
+
+  /** decryptShare plus the exact plaintext, for the #43 commitment check
+   *  (returned, never stored, so concurrent claims cannot cross). */
+  private async decryptShareText(encryptedShare: string, senderPubkey: string): Promise<{ share: SSSShare; plaintext: string }> {
+    return decryptShareWithSigner(this.signer, encryptedShare, senderPubkey);
   }
 
 
@@ -1629,5 +1619,39 @@ export class EscrowFedimintBridge {
       wait: true,
       meta,
     });
+  }
+}
+
+/** Decrypt one SSS share (NIP-44 from `senderPubkey`), returning the parsed
+ *  share and the exact plaintext. Dev/plaintext shares pass through. */
+async function decryptShareWithSigner(
+  signer: { nip44Decrypt(ciphertext: string, senderPubkey: string): Promise<string> },
+  encryptedShare: string,
+  senderPubkey: string,
+): Promise<{ share: SSSShare; plaintext: string }> {
+  // In dev/plaintext mode, shares are not encrypted — try parsing directly first
+  let decrypted: string;
+  let plaintext = false;
+  try {
+    const parsed = JSON.parse(encryptedShare);
+    plaintext = !!parsed && (parsed.index !== undefined || parsed.data !== undefined);
+  } catch { /* ciphertext */ }
+  if (plaintext) decrypted = encryptedShare;
+  else {
+    try { decrypted = await signer.nip44Decrypt(encryptedShare, senderPubkey); }
+    catch (error) {
+      if (isSignerApprovalError(error)) throw error;
+      console.warn("[chama] Share decrypt failed, using as-is:", encryptedShare.slice(0, 30));
+      decrypted = encryptedShare;
+    }
+  }
+  // Try parsing as JSON (real SSS shares are JSON objects)
+  try {
+    return { share: JSON.parse(decrypted) as SSSShare, plaintext: decrypted };
+  } catch {
+    // Not JSON — simulated or raw share string
+    // Wrap it as a minimal SSSShare-like object so downstream code can handle it
+    console.warn("[chama] Share is not JSON, wrapping as raw:", decrypted.slice(0, 30));
+    return { share: { index: 0, data: decrypted } as unknown as SSSShare, plaintext: decrypted };
   }
 }

@@ -8,6 +8,10 @@ export const trade: Record<string, string> = {
   "trade.detailsInChat": "Omba maelezo ya malipo kwa muuzaji kwenye gumzo kabla ya kutuma pesa.",
 
   "trade.lockReabsorbed": "Sats zako {amount} zimerudi kwenye pochi yako.",
+
+  "trade.sharesWaitingFunder": "Sats zako zimetumwa. Biashara itaanza mara upande mwingine utakapokubali.",
+
+  "trade.sharesWaitingOther": "Sats ziko njiani lakini bado hazijashikiliwa kwa biashara hii. Usitume pesa wala kuwasilisha chochote bado.",
   "trade.responseHours": "saa {count}",
   "trade.responseDays": "siku {count}",
   "trade.arbiterNoStake": "Hakuna dhamana iliyothibitishwa iliyopatikana kwa {name}.",

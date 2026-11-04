@@ -1,4 +1,5 @@
 import { TradePaymentDetailsChoice, BuyerPaymentDetails } from '../components/TradePaymentDetails.js';
+import { WithheldSharesNotice } from "../components/WithheldSharesNotice.js";
 import { matchingTradeHandles, needsTradePaymentDetails, tradeCashDetailsVisible } from '../../payments/trade-payment-details.js';
 import { HoldToConfirm } from "../components/Button.js";
 import { collectIsHold } from "../claim-hold.js";
@@ -1617,6 +1618,7 @@ export function TradeDetail({
 
   return (
     <div className="trade-detail-shell">
+      <WithheldSharesNotice state={state} pubkey={pubkey} t={t} />
       {state.rejectedLockRecovery?.pubkey === pubkey && onReclaimRejectedLock &&
         <RejectedLockRefund amountMsats={state.rejectedLockRecovery.amountMsats} onReclaim={() => onReclaimRejectedLock(state.id)} />}
 

@@ -1,6 +1,8 @@
 import { isSignerApprovalError } from "./signer-approval.js";
 import { publicConductTags } from "./public-conduct.js";
 import type { SettlementStalledPayload } from "./types.js";
+import type { LockStepPayload } from "./types.js";
+import { usesWithheldShares } from "./protocol-hardening.js";
 import { finalRefundSettlementProof } from "./onchain-settlement-transport.js";
 import { chamaClientTag, isChamaClientTagKind } from "./client-tag.js";
 import { shareEscrowId, circleFromEscrow, shareCreatePayload, rotationShareCreatePayload, nextRotationRoundPayload, fillEvidenceFor } from "../chama/policy.js";
@@ -97,7 +99,7 @@ import {
   type HydrationDiagnosticRun,
 } from "./hydration-diagnostics.js";
 import { buildChildCreateParams, remainingStock, unsoldStock, isSoldOut, isLastUnitContested, isMultiUnitListing } from "./storefront.js";
-import { HOLDER_ONLY_SHARE_POLICY, shareIndexForRole } from "./holder-shares.js";
+import { HOLDER_ONLY_SHARE_POLICY, shareIndexForRole, releasedShareMatches } from "./holder-shares.js";
 import type { TrancheRef } from "./tranche.js";
 import type { EscrowMode } from "./types.js";
 import { arbiterVotePriority, arbiterPriorityOrder, isPerformanceContest } from "./arbiter-substitution.js";
@@ -337,7 +339,11 @@ export function isPartialReplayDowngrade(current: EscrowState | undefined, incom
   if (incoming.status !== current.status) return false;
 
   const incomingChainIds = new Set(incoming.eventChain.map(event => event.raw.id));
-  return current.eventChain.some(event => !incomingChainIds.has(event.raw.id));
+  if (current.eventChain.some(event => !incomingChainIds.has(event.raw.id))) return true;
+  // #43 steps live on state.lock, not eventChain: a read that lost a known
+  // accept or release is missing history too.
+  return (!!current.lock.acceptEventId && current.lock.acceptEventId !== incoming.lock.acceptEventId)
+    || (!!current.lock.withheld?.releaseEventId && current.lock.withheld.releaseEventId !== incoming.lock.withheld?.releaseEventId);
 }
 
 /** Rounds of fetching missing predecessors by id on an explicit open: each
@@ -2148,6 +2154,9 @@ export class EscrowClient {
       const lockerPubkey = state.eventChain.find(e => e.kind === EscrowEventKind.LOCK)?.raw.pubkey;
       if (!lockerPubkey) return undefined;
       const plaintextShare = await this.signer.nip44Decrypt(myCipher, lockerPubkey);
+      // #43: never pass on a released share that differs from the LOCK's
+      // commitment; the vote goes out without an envelope instead.
+      if (!releasedShareMatches(state, shareIndex, plaintextShare)) return undefined;
       // Re-encrypt to the recipient — voter is the sender.
       const reEncrypted = await this.signer.nip44Encrypt(plaintextShare, recipient.pubkey);
       return {
@@ -3815,6 +3824,9 @@ export class EscrowClient {
 
     // After replay, check if auto-resolve should trigger
     if (result.state.status === EscrowStatus.LOCKED) {
+      this.maybeAutoAccept(escrowId).catch(e =>
+        console.debug("[escrow] Post-reload lock accept:", e?.message || e)
+      );
       this.maybeAutoResolve(escrowId).catch(e =>
         console.debug("[escrow] Post-reload auto-resolve:", e?.message || e)
       );
@@ -4014,13 +4026,18 @@ export class EscrowClient {
           console.debug("[escrow] Incoming-vote auto-resolve failed:", e)
         );
       }
+      if (parsed.kind === EscrowEventKind.LOCK) {
+        this.maybeAutoAccept(escrowId).catch(e =>
+          console.debug("[escrow] Incoming-lock accept failed:", e)
+        );
+      }
 
       // Flush buffered events — predecessors may now be in the chain
       this.flushEventBuffer(escrowId);
     } else if (result.error.code === "NO_STATE") {
       // Event arrived for an escrow we haven't loaded — buffer it
       this.bufferEvent(escrowId, event, relayUrl);
-    } else if (["INVALID_STATE", "NOT_PARTICIPANT", "THRESHOLD_NOT_MET"].includes(result.error.code)
+    } else if (["INVALID_STATE", "NOT_PARTICIPANT", "THRESHOLD_NOT_MET", "LOCK_WITHDRAWN", "LOCK_STEP_NO_LOCK"].includes(result.error.code)
       || (currentState?.escrowMode === "onchain" && ["INVALID_ONCHAIN_LOCK", "FUNDING_TERMS_FROZEN", "INVALID_FUNDING_TERMS", "ARBITER_PUBKEY_MISMATCH", "MISSING_ARBITER_PUBKEY"].includes(result.error.code))) {
       // Out-of-order event — reload full state from relays
       // This is more reliable than buffering because it fetches ALL events,
@@ -4604,6 +4621,9 @@ export class EscrowClient {
     // CLAIMED/COMPLETED/CANCELLED are still skipped (RESOLVE already
     // happened or the trade never got locked). APPROVED is skipped
     // because the winner's claim is the next legitimate event.
+    // #43: an unreleased withheld LOCK has no shares to vote with; its funder
+    // withdraws instead.
+    if (state.lock.withheld && !state.lock.withheld.releaseEventId) return;
     const isStuckLocked = state.status === EscrowStatus.LOCKED;
     const isStuckExpired =
       state.status === EscrowStatus.EXPIRED &&
@@ -4677,6 +4697,52 @@ export class EscrowClient {
   }
 
   /** After a vote, check if 2-of-3 threshold is met and auto-publish RESOLVE */
+  /** #43: the principal who did not fund accepts an accepted ecash LOCK on a
+   *  trade under the refused-lock rules, with no tap. The accept names the
+   *  LOCK, so from then on this person's own CANCEL can never refuse it, and it
+   *  is what the funder's app waits for before sending the withheld shares.
+   *  Sent for an old app's all-shares LOCK too: the pin protects it as well.
+   *  Never sent by the funder, the arbiter, or anyone whose read shows the
+   *  trade anything but LOCKED. */
+  private readonly lockAcceptsInFlight = new Set<string>();
+  private async maybeAutoAccept(escrowId: string): Promise<void> {
+    const state = this.states.get(escrowId);
+    if (!state || state.status !== EscrowStatus.LOCKED || !usesWithheldShares(state)
+        || state.chamaPolicy || state.lock.onchain || state.lock.acceptEventId) return;
+    const lock = state.eventChain.find(e => e.kind === EscrowEventKind.LOCK);
+    if (!lock) return;
+    const me = await this.getPubkey();
+    const counterparty = lock.pubkey === state.participants[Role.BUYER] ? state.participants[Role.SELLER]
+      : lock.pubkey === state.participants[Role.SELLER] ? state.participants[Role.BUYER] : null;
+    if (!counterparty || me !== counterparty) return;
+    const key = `${escrowId}:${lock.raw.id}`;
+    if (this.lockAcceptsInFlight.has(key)) return;
+    this.lockAcceptsInFlight.add(key);
+    try {
+      const payload: LockStepPayload = { type: "escrow:lock_step", step: "accept", lockEventId: lock.raw.id };
+      const unsigned: UnsignedEvent = {
+        kind: EscrowEventKind.LOCK_STEP,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [
+          [TAGS.ESCROW_ID, escrowId],
+          [TAGS.PREV_EVENT, lock.raw.id, "", "reply"],
+          [TAGS.TYPE, "escrow:lock_step"],
+        ],
+        content: JSON.stringify(payload),
+      };
+      const signed = await this.signWithSimTag(unsigned);
+      // Re-read after signing: a reload may have landed while the signer was
+      // open. Publish only if this same LOCK is still unaccepted.
+      const latest = this.states.get(escrowId);
+      if (!latest || latest.status !== EscrowStatus.LOCKED || latest.lock.acceptEventId
+          || !latest.eventChain.some(e => e.raw.id === lock.raw.id)) return;
+      await this.relayManager.publish(signed);
+      this.applyLocally(escrowId, signed, payload);
+    } finally {
+      this.lockAcceptsInFlight.delete(key);
+    }
+  }
+
   private async maybeAutoResolve(escrowId: string): Promise<void> {
     const state = this.states.get(escrowId);
     if (!state) return;
