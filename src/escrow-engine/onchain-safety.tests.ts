@@ -61,7 +61,7 @@ assert.equal(applyEvent(fixture.state, termsEvent()).ok, false, 'refund height c
 const lockTerms = { ...fixture.terms, amountSats: '100000', fundingTxid: '11'.repeat(32), fundingVout: 0 };
 const lock = fixture.event(Kind.LOCK, 'seller', { type: 'escrow:lock', notesHash: '', shares: [],
   onchain: lockTerms, buyerPubkey: fixture.pks.buyer, arbiterPubkey: fixture.pks.arbiter,
-  sellerReceivesMsats: 100000000, arbiterFeeMsats: 0, lockedAt: Date.now() / 1000 });
+  sellerReceivesMsats: 100000000, arbiterFeeMsats: 0, lockedAt: Math.floor(Date.now() / 1000) });
 const selectedRange = [{ itemId: 'range', label: 'Sats for sale', kind: 'exchange-bracket' as const,
   amountMsats: 150000000, quantity: 1 }];
 const rangeState = { ...fixture.state,
