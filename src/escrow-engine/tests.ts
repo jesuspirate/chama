@@ -807,6 +807,15 @@ const PLATFORM_PK = "dd".repeat(32);
 const ESCROW_ID   = "test-escrow-001";
 
 let eventCounter = 0;
+// This suite was written for the rules in force before the dated switches in
+// protocol-hardening.ts (Nov 1 and Dec 1 2026), and its fixtures carry the
+// wall clock into each signed CREATE. Run its clock from Oct 15 2026 so it keeps
+// testing that law instead of ageing into the new one; the dated rules have
+// their own suite (protocol-hardening.tests.ts).
+const SUITE_CLOCK_MS = Date.parse("2026-10-15T00:00:00Z");
+const realDateNow = Date.now;
+const suiteClockShift = realDateNow() - SUITE_CLOCK_MS;
+Date.now = () => realDateNow() - suiteClockShift;
 const NOW = Math.floor(Date.now() / 1000);
 
 function makeRawEvent(kind: EscrowEventKind, pubkey: string, tags: string[][]): NostrEvent {

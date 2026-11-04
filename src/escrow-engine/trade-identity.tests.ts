@@ -31,6 +31,7 @@ const createPayload = (by: { pk: string }, at: number, amountMsats: number) => (
   type: 'escrow:create', description: 'Sell sats for USD', amountMsats, fiatAmount: 50, fiatCurrency: 'USD',
   category: 'p2p-trade', mintUrl: 'fed11q...', platformFeeBps: 0, platformFeePubkey: by.pk,
   arbiterFeeMsats: 1_000_000, paymentMethods: ['Zelle'], expirySeconds: 86400, createdAt: at,
+  communityArbiters: [arbiter.pk],
 });
 const lockPayload = (at: number) => ({
   type: 'escrow:lock', notesHash: 'notes-hash',

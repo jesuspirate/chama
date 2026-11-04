@@ -50,6 +50,7 @@ const create = sign(seller, EscrowEventKind.CREATE, T0, null, JSON.stringify({
   fiatAmount: 50, fiatCurrency: 'USD', category: 'p2p-trade', mintUrl: 'fed11q...',
   platformFeeBps: 0, platformFeePubkey: seller.pk,
   arbiterFeeMsats: 1_000_000, paymentMethods: ['Zelle'], expirySeconds: 86400, createdAt: T0,
+  communityArbiters: [arbiter.pk],
 }));
 const lock = sign(seller, EscrowEventKind.LOCK, T0 + 10, create.id, JSON.stringify(lockPayload(T0 + 10)));
 const voteBuyer = sign(buyer, EscrowEventKind.VOTE, T0 + 20, lock.id,

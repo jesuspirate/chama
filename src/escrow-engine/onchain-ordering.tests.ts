@@ -34,7 +34,7 @@ fixture.apply(terms);
 const lock = fixture.event(Kind.LOCK, 'seller', { type: 'escrow:lock', notesHash: '', shares: [],
   onchain: { ...fixture.terms, amountSats: '100000', fundingTxid: '11'.repeat(32), fundingVout: 0 },
   buyerPubkey: fixture.pks.buyer, arbiterPubkey: fixture.pks.arbiter, sellerReceivesMsats: 100_000_000,
-  arbiterFeeMsats: 0, lockedAt: Date.now()/1000 });
+  arbiterFeeMsats: 0, lockedAt: Math.floor(Date.now()/1000) });
 const signer: Signer = { getPublicKey: async () => fixture.pks.buyer,
   signEvent: async () => { throw new Error('read-only test'); }, nip44Encrypt: async s => s, nip44Decrypt: async s => s };
 for (const outOfOrder of [true, false]) {
