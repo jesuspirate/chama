@@ -19,9 +19,10 @@ New invitation:
 fed11qgqyj3mfwfhksw309ajngvf4v5ur2ef5xdnxve3ex93nqdtxxe3nwcenxp3rjv3nx56kzvfnvsurzwrzvc6rye3cvycnyvpcxa3x2wtyv33nzefexquxgvekqqqjqv9zwuwj93u6f5ytmfhag6wm8mettphm77ykg7apvyt34x58wy50rk9sj8
 ```
 
-The owner identifies this as BLF with both Chama spaces automatically joined.
-Local decoding verifies the federation identity, not the server metadata or
-Fedi's space auto-join behavior. Those need a Fedi device check.
+The new invite joins BLF only. The English and French Chama space links stay
+unchanged and are separate choices; the new invite does not auto-join them.
+Local decoding verifies the federation identity, not server metadata or
+Fedi's join behavior. Those need a Fedi device check.
 
 ## 1. Verify the destination before changing app routing
 
@@ -29,7 +30,8 @@ Fedi's space auto-join behavior. Those need a Fedi device check.
   transport, modules, gateway availability and fees. Record live evidence;
   do not inherit compatibility claims from the old BLF.
 - Open the landing link and scan the displayed QR in Fedi. Confirm the
-  intended federation and both English and French spaces join. Also check a
+  intended federation joins. Check the unchanged English and French space
+  links independently. Also check a
   device already joined to old BLF, without deleting its wallet.
 - With explicit test-funding authorization, verify small receive, send,
   restart/recovery and claim operations on browser/PWA, Android and desktop.
