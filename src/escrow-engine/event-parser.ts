@@ -42,6 +42,7 @@ import {
   type PeriodReleasePayload,
   type PlanStartPayload,
   type ChildKeyPayload,
+  type LockStepPayload,
   type ValidationError,
   Role,
   Outcome,
@@ -71,6 +72,7 @@ const KIND_TO_TYPE: Record<number, string> = {
   [EscrowEventKind.PERIOD_RELEASE]: "escrow:period_release",
   [EscrowEventKind.PLAN_START]: "escrow:plan_start",
   [EscrowEventKind.CHILD_KEY]: "escrow:child_key",
+  [EscrowEventKind.LOCK_STEP]: "escrow:lock_step",
 };
 
 function isFulfillment(v: unknown): v is "physical" | "service" | "digital" {
@@ -402,6 +404,26 @@ function validateLockPayload(data: unknown): data is LockPayload {
   ) {
     return false;
   }
+  // #43 withheld shares: a boolean when present, never with on-chain terms,
+  // and exactly one share carries ciphertext while the other two carry only a
+  // commitment. Which share is the funder's is the reducer's call (it knows
+  // the roles); the parser only refuses a half-shape.
+  if (d.withheldShares !== undefined) {
+    if (typeof d.withheldShares !== "boolean") return false;
+    if (d.withheldShares) {
+      if (d.onchain !== undefined || !Array.isArray(d.shares) || d.shares.length !== 3) return false;
+      let carried = 0;
+      for (const entry of d.shares as unknown[]) {
+        if (!isWithheldShapeEntry(entry)) return false;
+        const share = entry as { encryptedFor: Record<string, string>; commitment?: string };
+        if (Object.keys(share.encryptedFor).length > 0) {
+          if (share.commitment !== undefined) return false;
+          carried++;
+        } else if (!isShareCommitment(share.commitment)) return false;
+      }
+      if (carried !== 1) return false;
+    }
+  }
   // ── Tier 2.1: on-chain locks ────────────────────────────────────────────
   // ⭐ ACCEPT-BOTH-SHAPES, with a hard rule about the middle. An ecash lock
   // carries a notesHash + 3 shares; an on-chain lock carries `onchain` terms and
@@ -441,6 +463,32 @@ function validateLockPayload(data: unknown): data is LockPayload {
     typeof d.arbiterPubkey === "string" && d.arbiterPubkey.length > 0 &&
     typeof d.lockedAt === "number"
   );
+}
+
+/** #43: hex SHA-256 commitment to one withheld share. */
+export function isShareCommitment(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+}
+
+function isWithheldShapeEntry(entry: unknown): boolean {
+  const e = entry as Record<string, unknown> | null;
+  if (!e || typeof e !== "object" || !Number.isInteger(e.shareIndex)) return false;
+  const encryptedFor = e.encryptedFor as Record<string, unknown> | undefined;
+  if (!encryptedFor || typeof encryptedFor !== "object" || Array.isArray(encryptedFor)) return false;
+  return Object.entries(encryptedFor).every(([k, v]) => k.length > 0 && typeof v === "string" && v.length > 0);
+}
+
+/** #43 LOCK_STEP: accept / release / withdraw. A release carries exactly the
+ *  two withheld shares with ciphertext; the reducer checks which indices and
+ *  recipients. Unknown steps are refused so a later step cannot be misread. */
+function validateLockStepPayload(data: unknown): data is LockStepPayload {
+  const d = data as Record<string, unknown>;
+  if (d?.type !== "escrow:lock_step" || typeof d.lockEventId !== "string" || !/^[0-9a-f]{64}$/.test(d.lockEventId)) return false;
+  if (d.step === "accept" || d.step === "withdraw") return d.shares === undefined;
+  if (d.step !== "release" || !Array.isArray(d.shares) || d.shares.length !== 2) return false;
+  return d.shares.every(entry => isWithheldShapeEntry(entry)
+    && Object.keys((entry as { encryptedFor: object }).encryptedFor).length > 0
+    && (entry as { commitment?: unknown }).commitment === undefined);
 }
 
 /** Holder-only shares: structural shape of a VOTE shareEnvelope. The semantic
@@ -643,6 +691,7 @@ const PAYLOAD_VALIDATORS: Record<number, (data: unknown) => boolean> = {
   [EscrowEventKind.PERIOD_RELEASE]: validatePeriodReleasePayload,
   [EscrowEventKind.PLAN_START]: validatePlanStartPayload,
   [EscrowEventKind.CHILD_KEY]: validateChildKeyPayload,
+  [EscrowEventKind.LOCK_STEP]: validateLockStepPayload,
 };
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -809,7 +858,7 @@ export function sortEventChain(events: ParsedEscrowEvent[]): ParsedEscrowEvent[]
   // global event kind. A future JOIN must not renew a seat for an earlier LOCK.
   const priority: Record<number, number> = {38100: 0, 38111: 1, 38101: 2,
     38102: 3, 38103: 4, 38112: 4, 38104: 5, 38117: 5.5,
-    38105: 6, 38106: 7, 38107: 8};
+    38105: 6, 38106: 7, 38107: 8, 38118: 3.5};
   const remaining = new Map(stateEvents.map(event => [event.raw.id, event]));
   const sorted: ParsedEscrowEvent[] = [];
   const compare = (a: ParsedEscrowEvent, b: ParsedEscrowEvent) =>

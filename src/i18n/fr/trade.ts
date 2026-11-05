@@ -9,6 +9,10 @@ export const trade: Record<string, string> = {
   "trade.detailsInChat": "Demandez les coordonnées au vendeur dans le chat avant de payer.",
 
   "trade.lockReabsorbed": "Vos {amount} sats sont de retour dans votre portefeuille.",
+
+  "trade.sharesWaitingFunder": "Vos sats sont envoyés. L'échange commence dès que l'autre partie accepte.",
+
+  "trade.sharesWaitingOther": "Les sats arrivent, mais ne sont pas encore retenus pour cet échange. N'envoyez pas d'argent et ne livrez rien pour l'instant.",
   "trade.responseHours": "{count} heures",
   "trade.responseDays": "{count} jours",
   "trade.arbiterNoStake": "Aucun dépôt de garantie vérifié trouvé pour {name}.",

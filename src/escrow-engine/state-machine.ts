@@ -1,4 +1,4 @@
-import { usesMoneyPathHardening, usesDecemberTradeRules, LOCK_TIMESTAMP_SKEW_SECONDS } from "./protocol-hardening.js";
+import { usesMoneyPathHardening, usesDecemberTradeRules, usesWithheldShares, LOCK_TIMESTAMP_SKEW_SECONDS } from "./protocol-hardening.js";
 import { stalledPayoutEligibility } from "./onchain-stalled.js";
 import type { SettlementStalledPayload } from "./types.js";
 import { atomicReleaseError, voteSettlement, winnerSettlementChoice } from "./onchain-settlement-choice.js";
@@ -54,11 +54,12 @@ import {
   type PeriodReleasePayload,
   type PlanStartPayload,
   type ChildKeyPayload,
+  type LockStepPayload,
   type ValidationError,
 } from "./types.js";
 import { payoutRecipientFor } from "./recipients.js";
-import { validateVoteShareEnvelope } from "./holder-shares.js";
-import { arbiterPriorityOrder, arbiterVotePriority, substitutionEligibleAt, clampSubstitutionGraceSeconds, oneSidedEscalationAt, isPerformanceContest } from "./arbiter-substitution.js";
+import { validateVoteShareEnvelope, shareIndexForRole } from "./holder-shares.js";
+import { arbiterPriorityOrder, arbiterShareRecipientsFor, arbiterVotePriority, substitutionEligibleAt, clampSubstitutionGraceSeconds, oneSidedEscalationAt, isPerformanceContest } from "./arbiter-substitution.js";
 import { pickArbiterFromPool, pickPreferredArbiter } from "../protocol/core/arbiter-pick.js";
 import { finalArbiterSettlementProof, finalCoopSettlementProof } from "./onchain-settlement-transport.js";
 import { validatePlanStart } from "./tranche-plan.js";
@@ -975,6 +976,38 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
     return err("INVALID_SHARES", "LOCK must include exactly 3 SSS shares", event.raw.id);
   }
 
+  // #43: a LOCK that holds back the other two shares. Only under the dated
+  // rules, only for ecash, only from a principal, and the one share it does
+  // carry must be the funder's own, encrypted to the funder alone. Anything
+  // else is a half-shape the claim path could not finish.
+  let withheld: EscrowState["lock"]["withheld"];
+  if (p.withheldShares) {
+    if (!usesWithheldShares(state) || p.onchain || state.chamaPolicy || p.sharePolicy !== "holder-only-v1"
+        || (lockerRole !== Role.BUYER && lockerRole !== Role.SELLER)) {
+      return err("INVALID_SHARES", "Withheld shares are only valid on an ecash trade created under the refused-lock rules", event.raw.id);
+    }
+    const lockerShareIndex = shareIndexForRole(lockerRole);
+    const commitments: Record<string, string> = {};
+    const indices = new Set<number>();
+    for (const share of p.shares) {
+      indices.add(share.shareIndex);
+      const recipients = Object.keys(share.encryptedFor ?? {});
+      if (share.shareIndex === lockerShareIndex) {
+        if (recipients.length !== 1 || recipients[0] !== event.pubkey || share.commitment !== undefined) {
+          return err("INVALID_SHARES", "A withheld-shares LOCK carries only the funder's own share, encrypted to the funder", event.raw.id);
+        }
+      } else if (recipients.length !== 0 || typeof share.commitment !== "string") {
+        return err("INVALID_SHARES", "A withheld share carries only its commitment", event.raw.id);
+      } else {
+        commitments[String(share.shareIndex)] = share.commitment;
+      }
+    }
+    if (indices.size !== 3 || ![0, 1, 2].every(index => indices.has(index))) {
+      return err("INVALID_SHARES", "LOCK shares must be indices 0, 1 and 2", event.raw.id);
+    }
+    withheld = { lockerPubkey: event.pubkey, lockerShareIndex, commitments };
+  }
+
   const selectedItems = p.selectedItems?.map(cloneSelectedMenuItem);
   let expectedLockAmountMsats = state.amountMsats;
 
@@ -1228,8 +1261,94 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
   // into [0, amount] (integer) on the way into state rather than rejecting the
   // LOCK. expectedLockAmountMsats is the just-validated lock amount.
   next.fees.arbiterMsats = sanitizeArbiterFeeMsats(p.arbiterFeeMsats, expectedLockAmountMsats);
+  if (withheld) next.lock.withheld = withheld;
 
   next.eventChain.push(event);
+  return { ok: true, state: next };
+}
+
+// ── LOCK_STEP (#43) ───────────────────────────────────────────────────────
+// accept: the principal who did not fund names the accepted LOCK. Because it
+//   names the LOCK's id it was provably signed after the LOCK, whatever date it
+//   carries, so replay lets it outrank that person's own CANCEL (see
+//   pinnedCancelIds). Valid on any ecash LOCK of a gated trade, including an
+//   old app's all-shares LOCK.
+// release: the funder sends the two withheld shares, after the accept.
+// withdraw: decided in replay (withdrawnLockIds), never applied here.
+function handleLockStep(state: EscrowState, event: ParsedEscrowEvent<LockStepPayload>): TransitionResult {
+  const p = event.payload;
+  if (!usesWithheldShares(state) || state.chamaPolicy) {
+    return err("LOCK_STEP_NOT_IN_FORCE", "The refused-lock rules do not apply to this trade", event.raw.id);
+  }
+  const lock = state.eventChain.find(e => e.kind === EscrowEventKind.LOCK) as ParsedEscrowEvent<LockPayload> | undefined;
+  if (!lock || lock.raw.id !== p.lockEventId || state.lock.onchain
+      || (state.status !== EscrowStatus.LOCKED && state.status !== EscrowStatus.EXPIRED)) {
+    return err("LOCK_STEP_NO_LOCK", "This step names a LOCK the trade does not hold", event.raw.id);
+  }
+  if (p.step === "withdraw") {
+    return err("LOCK_WITHDRAWN", "The funder withdrew this LOCK; reload the trade", event.raw.id);
+  }
+  const locker = lock.pubkey;
+  const counterparty = locker === state.participants[Role.BUYER] ? state.participants[Role.SELLER]
+    : locker === state.participants[Role.SELLER] ? state.participants[Role.BUYER] : null;
+
+  if (p.step === "accept") {
+    if (!counterparty || event.pubkey !== counterparty) {
+      return err("NOT_PARTICIPANT", "Only the principal who did not fund can accept this LOCK", event.raw.id);
+    }
+    if (event.prevEventId !== lock.raw.id) {
+      return err("LOCK_STEP_ORDER", "An accept replies to the LOCK it accepts", event.raw.id);
+    }
+    if (state.lock.acceptEventId) return err("ALREADY_ACCEPTED", "This LOCK is already accepted", event.raw.id);
+    // Never pushed onto eventChain: writers reply to the chain tip, and an
+    // older reader drops this kind, so a VOTE replying to a step would leave
+    // that reader with a missing predecessor and an unloadable trade.
+    const next = cloneState(state);
+    next.lock.acceptedBy = event.pubkey;
+    next.lock.acceptEventId = event.raw.id;
+    return { ok: true, state: next };
+  }
+
+  // release
+  const withheld = state.lock.withheld;
+  if (!withheld) return err("LOCK_STEP_NO_LOCK", "This LOCK withheld no shares", event.raw.id);
+  if (event.pubkey !== withheld.lockerPubkey) {
+    return err("NOT_PARTICIPANT", "Only the funder can release the withheld shares", event.raw.id);
+  }
+  if (withheld.releaseEventId) return err("ALREADY_RELEASED", "These shares are already released", event.raw.id);
+  if (!state.lock.acceptEventId || event.prevEventId !== state.lock.acceptEventId) {
+    return err("LOCK_STEP_ORDER", "A release replies to the accept of its LOCK", event.raw.id);
+  }
+  const buyer = state.participants[Role.BUYER], seller = state.participants[Role.SELLER], arbiter = state.participants[Role.ARBITER];
+  const expected = [0, 1, 2].filter(index => index !== withheld.lockerShareIndex);
+  const indices = p.shares.map(share => share.shareIndex).sort();
+  if (indices.join() !== expected.join()) {
+    return err("INVALID_SHARES", "A release carries exactly the two withheld shares", event.raw.id);
+  }
+  for (const share of p.shares) {
+    const recipients = Object.keys(share.encryptedFor);
+    if (share.shareIndex === 2) {
+      // The arbiter share: the seated arbiter, plus pool backups only when the
+      // LOCK said so, and never a principal (who would then hold two shares).
+      const allowed = state.lock.arbiterPoolShare && arbiter
+        ? arbiterShareRecipientsFor({ escrowId: state.id, pool: state.communityArbiters ?? [], buyerPubkey: buyer, sellerPubkey: seller, assignedArbiter: arbiter })
+        : arbiter ? [arbiter] : [];
+      if (!arbiter || recipients.length !== allowed.length || !allowed.every(pk => recipients.includes(pk))
+          || recipients.some(pk => pk === buyer || pk === seller)) {
+        return err("INVALID_SHARES", "The arbiter share must go to the seated arbiter and pool backups only", event.raw.id);
+      }
+    } else {
+      const holder = share.shareIndex === 0 ? buyer : seller;
+      if (!holder || recipients.length !== 1 || recipients[0] !== holder) {
+        return err("INVALID_SHARES", "A principal's share must go to that principal alone", event.raw.id);
+      }
+    }
+  }
+  const next = cloneState(state);
+  for (const share of p.shares) {
+    next.lock.shares.set(String(share.shareIndex), { shareIndex: share.shareIndex, encryptedFor: { ...share.encryptedFor } });
+  }
+  next.lock.withheld = { ...withheld, commitments: { ...withheld.commitments }, releaseEventId: event.raw.id };
   return { ok: true, state: next };
 }
 
@@ -1246,6 +1365,11 @@ function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): 
   const voterIsPrincipal = event.pubkey === state.participants[Role.BUYER] || event.pubkey === state.participants[Role.SELLER];
   const outcomeLaw = chamaOutcomeError(state, p.outcome, event.timestamp, event.chamaCycle, voterIsPrincipal ? "observe-principal" : "observe-arbiter", p.fillEvidence);
   if (outcomeLaw) return err("CHAMA_REFUND_ONLY", outcomeLaw, event.raw.id);
+  // #43: until the funder releases the withheld shares, nobody but the funder
+  // holds a share, so there is nothing to vote with.
+  if (state.lock.withheld && !state.lock.withheld.releaseEventId) {
+    return err("SHARES_NOT_RELEASED", "The funder has not released the shares yet", event.raw.id);
+  }
 
   // v0.1.66.26: accept EXPIRED in addition to LOCKED so post-expiry
   // healing votes can be recorded. Mechanism A relies on this.
@@ -1933,8 +2057,10 @@ export function applyEvent(
     }
     if (state.status === EscrowStatus.EXPIRED) {
       // Already expired — fall through to dispatch (healing path).
-    } else if (event.kind === EscrowEventKind.VOTE) {
+    } else if (event.kind === EscrowEventKind.VOTE || event.kind === EscrowEventKind.LOCK_STEP) {
       // First post-expiry event is a VOTE: flip state and let handleVote run.
+      // #43: a LOCK_STEP likewise still lands, or a late release would leave
+      // an expired trade's refund votes with no shares to carry.
       state = cloneState(state);
       state.status = EscrowStatus.EXPIRED;
       // fall through to dispatch
@@ -1994,6 +2120,8 @@ export function applyEvent(
       return handlePlanStart(state, event as ParsedEscrowEvent<PlanStartPayload>);
     case EscrowEventKind.CHILD_KEY:
       return handleChildKey(state, event as ParsedEscrowEvent<ChildKeyPayload>);
+    case EscrowEventKind.LOCK_STEP:
+      return handleLockStep(state, event as ParsedEscrowEvent<LockStepPayload>);
     default:
       return err("UNKNOWN_EVENT_KIND", `Unknown event kind: ${event.kind}`, event.raw.id);
   }
@@ -2094,7 +2222,7 @@ function redundantOnchainLock(state: EscrowState, event: ParsedEscrowEvent<LockP
 }
 
 const REPLAY_RULE_BREAKS: Partial<Record<EscrowEventKind, ReadonlySet<string>>> = {
-  [EscrowEventKind.VOTE]: new Set(["ROLE_MISMATCH"]),
+  [EscrowEventKind.VOTE]: new Set(["ROLE_MISMATCH", "SHARES_NOT_RELEASED"]),
   [EscrowEventKind.JOIN]: new Set(["ROLE_CONFLICT", "ORDER_ALREADY_FINALIZED", "CHAMA_SEATS_FIXED"]),
 };
 
@@ -2120,7 +2248,7 @@ const REPLAY_RULE_BREAKS: Partial<Record<EscrowEventKind, ReadonlySet<string>>> 
  */
 export function replayEventChain(
   events: ParsedEscrowEvent[],
-  opts: { creator?: string | null } = {},
+  opts: { creator?: string | null; /** internal: #43 release probe */ lockStepProbe?: boolean } = {},
 ): TransitionResult {
   if (events.length === 0) {
     return err("EMPTY_CHAIN", "Cannot replay empty event chain");
@@ -2151,6 +2279,47 @@ export function replayEventChain(
     return err("MISSING_CREATE", "First event in chain must be CREATE");
   }
 
+  // Every id the read holds, before #43 sets anything aside: an event replying
+  // to a withdrawn LOCK's step still has its predecessor in the read.
+  const availableIds = new Set(events.map(event => event.raw.id));
+  // #43 refused-lock rules, on trades created from the switch-on date. Both
+  // decisions use only signed references (an event naming another's id), never
+  // the dates people write, so every reader reaches the same answer.
+  const gatedSteps = usesWithheldShares({ createdAt: events[0].timestamp })
+    && !(events[0].payload as CreatePayload).chamaPolicy;
+  // "A release outranks a withdraw" means a release the reducer accepted, not
+  // any release-shaped event: probe the chain with withdraws ignored first.
+  let releasedLocks = new Set<string>();
+  if (gatedSteps && !opts.lockStepProbe && events.some(e => e.kind === EscrowEventKind.LOCK_STEP
+      && (e.payload as LockStepPayload).step === "withdraw")) {
+    const probe = replayEventChain(events, { ...opts, lockStepProbe: true });
+    const probeLock = probe.ok ? probe.state.eventChain.find(e => e.kind === EscrowEventKind.LOCK) : undefined;
+    if (probe.ok && probeLock && probe.state.lock.withheld?.releaseEventId) releasedLocks = new Set([probeLock.raw.id]);
+    // A chain that does not load without the withdraw must not be rescued by
+    // it when the funder may have released: fail closed and treat every LOCK
+    // with a funder-signed release in the read as released.
+    if (!probe.ok) releasedLocks = new Set(events.filter(e => e.kind === EscrowEventKind.LOCK_STEP
+      && (e.payload as LockStepPayload).step === "release"
+      && events.some(l => l.kind === EscrowEventKind.LOCK && l.raw.id === (e.payload as LockStepPayload).lockEventId && l.pubkey === e.pubkey))
+      .map(e => (e.payload as LockStepPayload).lockEventId));
+  }
+  // A funder-signed release whose accept is missing from this read may have
+  // applied in a fuller read: fail closed and count it as released too.
+  if (gatedSteps && !opts.lockStepProbe) for (const e of events) {
+    const p = e.payload as LockStepPayload;
+    if (e.kind === EscrowEventKind.LOCK_STEP && p.step === "release" && (!e.prevEventId || !availableIds.has(e.prevEventId))
+        && events.some(l => l.kind === EscrowEventKind.LOCK && l.raw.id === p.lockEventId && l.pubkey === e.pubkey)) {
+      releasedLocks.add(p.lockEventId);
+    }
+  }
+  const lockSteps = gatedSteps
+    ? refusedLockSteps(events, opts.lockStepProbe ? null : releasedLocks)
+    : { withdrawn: [], setAside: new Set<string>(), pinnedCancels: [] };
+  if (lockSteps.setAside.size > 0) events = events.filter(event => !lockSteps.setAside.has(event.raw.id));
+  const pinnedIds = new Set(lockSteps.pinnedCancels.map(event => event.raw.id));
+  const withdrawnIds = new Set([...lockSteps.setAside].filter(id => !pinnedIds.has(id)));
+  const withdrawnSkipped = new Set<string>();
+
   let state: EscrowState | null = null;
 
   // Benign error codes that can be safely skipped during replay.
@@ -2171,7 +2340,6 @@ export function replayEventChain(
     "ARBITER_POOL_EMPTY", "ARBITER_NOT_IN_POOL",
   ]);
 
-  const availableIds = new Set(events.map(event => event.raw.id));
   for (const event of events) {
     const result = applyEvent(state, event);
     if (!result.ok) {
@@ -2245,6 +2413,22 @@ export function replayEventChain(
       // braces: without a LOCK in the chain nothing here is forgiven.
       if (result.error.code === "EXPIRY_NOT_IN_TRADE"
           && state?.eventChain.some(e => e.kind === EscrowEventKind.LOCK)) { note(); continue; }
+      // #43: once a withdrawn LOCK is set aside, a vote, resolve or complete
+      // that was about it (an older app keeps voting on what it reads as
+      // funded) finds an open trade. It cannot change custody: the notes never
+      // left the funder. Skip it, or one seated person's vote would stop the
+      // trade loading and hide the funder's recovery.
+      // Only an event that replies to the withdrawn LOCK, one of its steps, or
+      // an event this rule already skipped: anything else with no LOCK in the
+      // read is a hole, and stays strict.
+      if (state?.status === EscrowStatus.CREATED && !!event.prevEventId
+          && (withdrawnIds.has(event.prevEventId) || withdrawnSkipped.has(event.prevEventId))
+          && !state.eventChain.some(e => e.kind === EscrowEventKind.LOCK)
+          && result.error.code === "INVALID_STATE"
+          && (event.kind === EscrowEventKind.VOTE || event.kind === EscrowEventKind.RESOLVE || event.kind === EscrowEventKind.COMPLETE)) {
+        withdrawnSkipped.add(event.raw.id);
+        note(); continue;
+      }
       // Oct 28 mainnet: a funder's repeated taps signed the same on-chain LOCK
       // three times, and the trade could not load anywhere. A later LOCK from
       // the author of the accepted on-chain LOCK, with identical terms (only
@@ -2305,6 +2489,12 @@ export function replayEventChain(
       if (event.kind === EscrowEventKind.SETTLEMENT && result.error.code === "NOT_PARTICIPANT") {
         note(); continue;
       }
+      // #43: a LOCK_STEP that does not apply leaves custody where it was. An
+      // unapplied accept pins nothing in the reducer; an unapplied release
+      // leaves the trade "waiting", never funded. Skip with a note.
+      if (event.kind === EscrowEventKind.LOCK_STEP) {
+        note(result.error.code === "ALREADY_ACCEPTED" || result.error.code === "ALREADY_RELEASED"); continue;
+      }
       // Replay rule 5: an author without the needed role, or a broken timing
       // or state rule on a non-money event, is ignored and replay continues.
       if (!entitled || REPLAY_RULE_BREAKS[event.kind]?.has(result.error.code)) {
@@ -2324,6 +2514,23 @@ export function replayEventChain(
     state = result.state;
   }
 
+  if (lockSteps.withdrawn.length > 0 || lockSteps.pinnedCancels.length > 0) {
+    state = { ...state!,
+      ...(lockSteps.withdrawn.length > 0 ? { rejectedLocks: [...(state!.rejectedLocks ?? []), ...lockSteps.withdrawn.map(event => ({
+        event, code: "WITHDRAWN_BEFORE_ACCEPT" as const,
+      }))] } : {}),
+      replayNotes: [...(state!.replayNotes ?? []),
+        ...lockSteps.withdrawn.map(event => ({
+          eventId: event.raw.id, kind: event.kind, code: "WITHDRAWN_BEFORE_ACCEPT",
+          message: "The funder took this lock back before its shares were released",
+        })),
+        ...lockSteps.pinnedCancels.map(event => ({
+          eventId: event.raw.id, kind: event.kind, code: "CANCEL_AFTER_ACCEPT",
+          message: "This person accepted a lock, so their cancel cannot refuse it",
+        }))],
+    };
+  }
+
   if (rooted.ignored.length > 0) {
     const rotationRoot = state!.chamaCircle?.pot === "rotation-v2" && state!.chamaCircle.roundIndex >= 2;
     state = { ...state!, replayNotes: [...(state!.replayNotes ?? []), ...rooted.ignored.map(event => ({
@@ -2333,6 +2540,48 @@ export function replayEventChain(
     }))] };
   }
   return { ok: true, state: state! };
+}
+
+/** #43, replay-level decisions that a single reducer step cannot make, because
+ *  the deciding event can sort before the event it decides about.
+ *
+ *  withdrawn: a withheld-shares LOCK whose funder signed a withdraw replying to
+ *    it, with no release from that funder for it anywhere in the read. The LOCK
+ *    and every step naming it are set aside, so the trade reads as if that LOCK
+ *    never came; the LOCK is reported in rejectedLocks for the funder's
+ *    recovery. A release outranks a withdraw: the funder's own app never signs
+ *    both, and once the shares are out the funded state must win.
+ *  pinnedCancels: every CANCEL signed by someone who accepted an ecash LOCK in
+ *    this read. The accept names the LOCK's id, so it was signed after the LOCK;
+ *    a CANCEL by the same person can only be a contradiction, and the funded
+ *    state wins. This is what stops a cancel dated before a LOCK the canceller
+ *    has already seen from refusing it after the fact. */
+function refusedLockSteps(events: ParsedEscrowEvent[], releasedLocks: ReadonlySet<string> | null): {
+  withdrawn: ParsedEscrowEvent<LockPayload>[]; setAside: Set<string>; pinnedCancels: ParsedEscrowEvent[];
+} {
+  const locks = new Map(events.filter(e => e.kind === EscrowEventKind.LOCK)
+    .map(e => [e.raw.id, e as ParsedEscrowEvent<LockPayload>]));
+  const steps = events.filter(e => e.kind === EscrowEventKind.LOCK_STEP) as ParsedEscrowEvent<LockStepPayload>[];
+  const withdrawn: ParsedEscrowEvent<LockPayload>[] = [];
+  const setAside = new Set<string>();
+  for (const step of steps) {
+    if (step.payload.step !== "withdraw" || releasedLocks === null) continue;
+    const lock = locks.get(step.payload.lockEventId);
+    if (!lock || !lock.payload.withheldShares || lock.payload.onchain || setAside.has(lock.raw.id)
+        || step.pubkey !== lock.pubkey || step.prevEventId !== lock.raw.id) continue;
+    if (releasedLocks.has(lock.raw.id)) continue;
+    withdrawn.push(lock);
+    setAside.add(lock.raw.id);
+    for (const other of steps) if (other.payload.lockEventId === lock.raw.id) setAside.add(other.raw.id);
+  }
+  const acceptors = new Set(steps.filter(step => {
+    if (step.payload.step !== "accept" || setAside.has(step.raw.id)) return false;
+    const lock = locks.get(step.payload.lockEventId);
+    return !!lock && !lock.payload.onchain && step.prevEventId === lock.raw.id && step.pubkey !== lock.pubkey;
+  }).map(step => step.pubkey));
+  const pinnedCancels = events.filter(e => e.kind === EscrowEventKind.CANCEL && acceptors.has(e.pubkey));
+  for (const cancel of pinnedCancels) setAside.add(cancel.raw.id);
+  return { withdrawn, setAside, pinnedCancels };
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -2350,6 +2599,9 @@ export function canVote(state: EscrowState, pubkey: string, nowSec?: number, out
   // handleVote — healing votes on timed-out trades are allowed.
   if (state.status !== EscrowStatus.LOCKED && state.status !== EscrowStatus.EXPIRED) {
     return { canVote: false, reason: `State is ${state.status}, not LOCKED or EXPIRED` };
+  }
+  if (state.lock.withheld && !state.lock.withheld.releaseEventId) {
+    return { canVote: false, reason: "The funder has not released the shares yet" };
   }
   const now = nowSec ?? nowSeconds();
   // HEALING includes a LOCKED trade past its deadline. The reducer only flips

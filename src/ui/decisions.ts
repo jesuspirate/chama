@@ -736,6 +736,9 @@ function needsYouReason(
     return "claim";
   }
 
+  // #43: funding sent but the shares are not released yet. Nothing is owed by
+  // anyone but the funder's app; never summon a seller to deliver here.
+  if (e.status === EscrowStatus.LOCKED && e.lock?.withheld && !e.lock.withheld.releaseEventId) return null;
   if (e.status === EscrowStatus.LOCKED) {
     const buyerVote = e.votes[Role.BUYER];
     const sellerVote = e.votes[Role.SELLER];

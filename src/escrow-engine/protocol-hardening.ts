@@ -9,10 +9,26 @@ export function usesMoneyPathHardening(state: Pick<EscrowState, 'createdAt'>): b
   return state.createdAt >= MONEY_PATH_HARDENING_CREATE_AT;
 }
 
-/** Second dated rule set (audit M2 and the refused-lock fixes). Same law as
- * above: gate on the signed CREATE time, so a chain keeps the rules it was
- * created under on every replay. Readers ship in 6.4.30, well before this. */
+/** Second dated rule set: audit M2 only (a stranger cannot carry a funded
+ * trade past its deadline). Same law as above: gate on the signed CREATE time,
+ * so a chain keeps the rules it was created under on every replay. Readers
+ * ship in 6.4.30, well before this. The refused-lock fixes (#43) are NOT part
+ * of this set; they have their own date below. */
 export const TRADE_RULES_DEC_2026_CREATE_AT = Date.parse('2026-12-01T00:00:00Z') / 1000;
 export function usesDecemberTradeRules(state: Pick<EscrowState, 'createdAt'>): boolean {
   return state.createdAt >= TRADE_RULES_DEC_2026_CREATE_AT;
+}
+
+/** Third dated rule set, #43 refused-lock rules (roadmap/refused-lock-design.md):
+ *  - a LOCK may carry only the funder's share (`withheldShares`), with the other
+ *    two committed and sent later in a RELEASE;
+ *  - the other principal ACCEPTs a LOCK by naming its id, after which their own
+ *    CANCEL can never refuse it, whatever date that CANCEL carries;
+ *  - the funder may WITHDRAW a withheld LOCK before RELEASE, and the trade
+ *    returns to open.
+ * Gate on the signed CREATE time, never the device clock. Readers ship in
+ * 6.4.34; writers ship in a later release before this date. */
+export const WITHHELD_SHARES_CREATE_AT = Date.parse('2027-02-01T00:00:00Z') / 1000;
+export function usesWithheldShares(state: Pick<EscrowState, 'createdAt'>): boolean {
+  return state.createdAt >= WITHHELD_SHARES_CREATE_AT;
 }

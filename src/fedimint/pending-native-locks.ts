@@ -582,6 +582,13 @@ export async function recoverPendingNativeLock(
           );
           return "kept";
         }
+        // #43: a withheld-shares LOCK is not escrow until its RELEASE. Keep the
+        // saved notes: a later WITHDRAW (or a refusal) needs them to come back,
+        // and nothing here may re-absorb them while the LOCK stands.
+        if (state.lock?.withheld && !state.lock.withheld.releaseEventId) {
+          noteKept(entry.escrowId, "withheld-shares LOCK awaiting release; keeping the saved notes", { bumpAttempts: false });
+          return "kept";
+        }
         // Our crash-window publish actually landed: the escrow owns these
         // notes now. Re-absorbing would hollow our OWN live trade.
         clearPendingNativeLock(entry.escrowId);
@@ -598,7 +605,7 @@ export async function recoverPendingNativeLock(
     // Reabsorb automatically, but only with measured wallet credit.
     if (state.rejectedLocks?.length) {
       const ourHash = await deps.hashNotes(entry.oobNotes);
-      const refused = state.rejectedLocks.some(row => (row.code === "ORDER_NOT_FINALIZED" || row.code === "CANCELLED_BEFORE_LOCK")
+      const refused = state.rejectedLocks.some(row => (row.code === "ORDER_NOT_FINALIZED" || row.code === "CANCELLED_BEFORE_LOCK" || row.code === "WITHDRAWN_BEFORE_ACCEPT")
         && row.event.payload.notesHash === ourHash && !row.event.payload.onchain);
       if (refused && !state.claim.claimedAt) {
         return reabsorb(entry, deps, state, true);
