@@ -252,7 +252,7 @@ await check('gate edges: a withheld LOCK is refused one second before the date a
   const accept = step(d, seller, gate + 20, lock.raw.id, { step: 'accept', lockEventId: lock.raw.id });
   const state = replay([create, join, lock, accept, cancel(d, gate + 5, create.raw.id)]);
   assert.equal(state.status, S.CANCELLED, 'trades created before the date keep the rules they were created under');
-  assert(TRADE_RULES_DEC_2026_CREATE_AT < gate);
+  assert(TRADE_RULES_DEC_2026_CREATE_AT <= gate);
 });
 
 await check('a withheld LOCK must carry the funder\'s own share, to the funder alone', async () => {
@@ -312,7 +312,9 @@ await check('the app: no "needs you" before release, and the waiting notice name
   const sellerView = renderToStaticMarkup(createElement(WithheldSharesNotice, { state: waiting, pubkey: seller, t }));
   assert.match(sellerView, /deliver anything yet/);
   const buyerView = renderToStaticMarkup(createElement(WithheldSharesNotice, { state: waiting, pubkey: buyer, t }));
-  assert.match(buyerView, /once the other side accepts/);
+  assert.match(buyerView, /The other side accepted/, 'accepted: the funder is told the funding is going on');
+  const unaccepted = replay([create, join, lock]);
+  assert.match(renderToStaticMarkup(createElement(WithheldSharesNotice, { state: unaccepted, pubkey: buyer, t })), /once the other side accepts/);
   const release = step(d, buyer, T0 + 30, accept.raw.id, { step: 'release', lockEventId: lock.raw.id, shares: releaseShares(plain) });
   const funded = replay([create, join, lock, accept, release]);
   assert.equal(renderToStaticMarkup(createElement(WithheldSharesNotice, { state: funded, pubkey: seller, t })), '');

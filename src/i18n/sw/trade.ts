@@ -9,7 +9,11 @@ export const trade: Record<string, string> = {
 
   "trade.lockReabsorbed": "Sats zako {amount} zimerudi kwenye pochi yako.",
 
-  "trade.sharesWaitingFunder": "Sats zako zimetumwa. Biashara itaanza mara upande mwingine utakapokubali.",
+  "trade.sharesWaitingFunder": "Sats zako zimetengwa kwa biashara hii. Itaanza mara upande mwingine utakapokubali. Hadi wakati huo unaweza kuzirudisha.",
+  "trade.sharesSendingFunder": "Upande mwingine umekubali. Chama inatuma fedha zako kwenye biashara.",
+  "trade.sharesExpiredFunder": "Muda wa biashara hii uliisha kabla haijaanza. Rudisha sats zako.",
+  "trade.sharesWithdrawRetry": "Kurudisha sats zako hakukukamilika. Jaribu tena.",
+  "trade.takeSatsBack": "Rudisha sats zako",
 
   "trade.sharesWaitingOther": "Sats ziko njiani lakini bado hazijashikiliwa kwa biashara hii. Usitume pesa wala kuwasilisha chochote bado.",
   "trade.responseHours": "saa {count}",

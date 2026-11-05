@@ -1222,6 +1222,8 @@ export interface UseEscrowActions {
     includeInvite?: boolean,
   ) => Promise<string>;
   reclaimRejectedLock: (escrowId: string) => Promise<void>;
+  /** #43: take back a withheld funding nobody has accepted yet. */
+  withdrawWithheldLock: (escrowId: string) => Promise<void>;
   redeemEcash: (oobNotes: string, meta?: ChamaOperationMeta) => Promise<void>;
   /** 6.0.2 liveness probe. Ask the federation whether a bearer note is live
    *  by TAKING it: `recovered` puts the sats in this balance, `dead` is the
@@ -7783,6 +7785,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }
       await refreshBalanceRef.current?.();
       updateEscrow(id, client.getState(id)!);
+    },
+    withdrawWithheldLock: async (id: string) => {
+      const bridge = requireBridge();
+      const state = await bridge.withdrawWithheldLock(id);
+      await refreshBalanceRef.current?.();
+      const latest = state ?? clientRef.current?.getState(id);
+      if (latest) updateEscrow(id, latest);
     },
     reabsorbBearerNotes: async (
       input: import("../fedimint/reabsorb-bearer-notes.js").ReabsorbInput,

@@ -698,6 +698,12 @@ export interface LockPayload {
    *  on trades created from WITHHELD_SHARES_CREATE_AT. Absent ⇒ every share
    *  is in this LOCK (every lock before the rule). */
   withheldShares?: boolean;
+  /** #43 writer: the two held-back share plaintexts, NIP-44 encrypted by the
+   *  funder to the funder alone (JSON `[{shareIndex, plaintext}]`). Lets any of
+   *  the funder's devices release. Gives nobody else anything, and gives the
+   *  funder nothing it lacks: it holds the whole notes until the trade ends.
+   *  Not consensus: readers ignore it. */
+  withheldBackup?: string;
   /** Breakdown of amounts (2-way split since v0.1.71) */
   sellerReceivesMsats: number;
   arbiterFeeMsats: number;

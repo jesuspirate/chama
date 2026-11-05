@@ -101,6 +101,7 @@ export function LiveTradeSurface({
   onLockHoldStart,
   onLockHoldCancel,
   onReclaimRejectedLock,
+  onWithdrawWithheldLock,
   orderMismatchesListing = false,
   onRepost,
   onHome,
@@ -134,6 +135,8 @@ export function LiveTradeSurface({
    *  the Fund / Claim surfaces defer to the full view via onOpenFullView. */
   onClaim?: () => Promise<void>;
   onReclaimRejectedLock?: (id: string) => Promise<void>;
+  /** #43: take back a withheld funding nobody has accepted yet. */
+  onWithdrawWithheldLock?: (id: string) => Promise<void>;
   /** Audit M3: this storefront order's terms aren't its listing's. */
   orderMismatchesListing?: boolean;
   onLock?: (opts?: { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[]; amountMsats?: number }) => Promise<void>;
@@ -824,7 +827,7 @@ export function LiveTradeSurface({
   return (
     <div ref={rootRef} className="lts-root" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: T.bg, paddingBottom: 12 }}>
       {orderMismatchesListing && state.participants[Role.SELLER] === pubkey && <OrderMismatchBanner />}
-      <WithheldSharesNotice state={state} pubkey={pubkey} t={tr} />
+      <WithheldSharesNotice state={state} pubkey={pubkey} t={tr} onWithdraw={onWithdrawWithheldLock} />
       {state.rejectedLockRecovery?.pubkey === pubkey && onReclaimRejectedLock &&
         <RejectedLockRefund amountMsats={state.rejectedLockRecovery.amountMsats} onReclaim={() => onReclaimRejectedLock(state.id)} />}
       {reabsorbedLockAmount(state.id) && <p>{tr("trade.lockReabsorbed", {amount:Math.floor(reabsorbedLockAmount(state.id)! / 1000).toLocaleString()})}</p>}

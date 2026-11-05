@@ -73,6 +73,7 @@ import {
 import type { SelectedMenuItem } from "../escrow-engine/types.js";
 import { EscrowStatus, type EscrowState } from "../escrow-engine/types.js";
 import { compactSelectedMenuItems } from "../escrow-engine/selected-menu-items.js";
+import { defaultWithheldShareStore } from "../escrow-engine/withheld-share-store.js";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -475,9 +476,13 @@ export function shouldClearNativeLockAfterPublish(input: {
   committedNotesHash: string | null | undefined;
   expectedNotesHash: string;
   custodyDurability: "acknowledged" | "pending" | "expired-unacked" | undefined;
+  /** #43: a withheld-shares LOCK is not escrow until its RELEASE. The saved
+   *  notes stay so a WITHDRAW (or a refusal) can bring them back. */
+  withheldUnreleased?: boolean;
 }): boolean {
   return input.committedNotesHash === input.expectedNotesHash
-    && input.custodyDurability === "acknowledged";
+    && input.custodyDurability === "acknowledged"
+    && !input.withheldUnreleased;
 }
 
 const ALREADY_SPENT_SUBSTRINGS = [
@@ -608,6 +613,19 @@ export async function recoverPendingNativeLock(
       const refused = state.rejectedLocks.some(row => (row.code === "ORDER_NOT_FINALIZED" || row.code === "CANCELLED_BEFORE_LOCK" || row.code === "WITHDRAWN_BEFORE_ACCEPT")
         && row.event.payload.notesHash === ourHash && !row.event.payload.onchain);
       if (refused && !state.claim.claimedAt) {
+        // #43: these notes are coming back, so this device must never release
+        // their held-back shares afterwards (a stale read could still show the
+        // LOCK as accepted). If that can't be saved, wait: no reabsorb.
+        const withheld = state.rejectedLocks.some(row => row.event.payload.notesHash === ourHash && row.event.payload.withheldShares);
+        try {
+          if (withheld && !defaultWithheldShareStore().retire(entry.escrowId, ourHash)) {
+            noteKept(entry.escrowId, "could not mark the held-back shares retired; keeping the saved notes", { bumpAttempts: false });
+            return "kept";
+          }
+        } catch {
+          noteKept(entry.escrowId, "held-back share store unavailable; keeping the saved notes", { bumpAttempts: false });
+          return "kept";
+        }
         return reabsorb(entry, deps, state, true);
       }
     }

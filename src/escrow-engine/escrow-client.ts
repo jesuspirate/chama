@@ -3,6 +3,7 @@ import { publicConductTags } from "./public-conduct.js";
 import type { SettlementStalledPayload } from "./types.js";
 import type { LockStepPayload } from "./types.js";
 import { usesWithheldShares } from "./protocol-hardening.js";
+import { defaultWithheldShareStore, type WithheldShareStore } from "./withheld-share-store.js";
 import { finalRefundSettlementProof } from "./onchain-settlement-transport.js";
 import { chamaClientTag, isChamaClientTagKind } from "./client-tag.js";
 import { shareEscrowId, circleFromEscrow, shareCreatePayload, rotationShareCreatePayload, nextRotationRoundPayload, fillEvidenceFor } from "../chama/policy.js";
@@ -102,7 +103,7 @@ import { buildChildCreateParams, remainingStock, unsoldStock, isSoldOut, isLastU
 import { HOLDER_ONLY_SHARE_POLICY, shareIndexForRole, releasedShareMatches } from "./holder-shares.js";
 import type { TrancheRef } from "./tranche.js";
 import type { EscrowMode } from "./types.js";
-import { arbiterVotePriority, arbiterPriorityOrder, isPerformanceContest } from "./arbiter-substitution.js";
+import { arbiterVotePriority, arbiterPriorityOrder, arbiterShareRecipientsFor, isPerformanceContest } from "./arbiter-substitution.js";
 import type { VoteShareEnvelope } from "./types.js";
 import { EscrowNotifier } from "./notifier.js";
 import { ENCRYPTION_CONFIG } from "./encryption-config.js";
@@ -525,6 +526,9 @@ export interface EscrowClientConfig {
    * never blocks a publish. Absent/returns [] by default (a no-op).
    */
   chainEventTagger?: (unsigned: UnsignedEvent) => Promise<string[][]>;
+  /** #43 writer: where the funder keeps the two withheld shares until it
+   *  releases them. Defaults to the signed-in identity's local storage. */
+  withheldShareStore?: WithheldShareStore;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1961,6 +1965,11 @@ export class EscrowClient {
     /** Arbiter substitution: true when the bridge encrypted the arbiter share
      *  to the deterministic priority order (assigned + backups). */
     arbiterPoolShare?: boolean;
+    /** #43: only the funder's share carries ciphertext; the other two carry
+     *  commitments and go out in a RELEASE after the counterparty accepts. */
+    withheldShares?: boolean;
+    /** #43: the held-back shares encrypted to the funder alone. */
+    withheldBackup?: string;
     /** v2.3: committed substitution grace ceiling (seconds). Rides in the
      *  signed LOCK so backup eligibility replays identically everywhere.
      *  Absent ⇒ legacy 4h default. */
@@ -2016,6 +2025,8 @@ export class EscrowClient {
       shares: params.shares,
       sharePolicy: params.sharePolicy,
       arbiterPoolShare: params.arbiterPoolShare,
+      ...(params.withheldShares ? { withheldShares: true } : {}),
+      ...(params.withheldShares && params.withheldBackup ? { withheldBackup: params.withheldBackup } : {}),
       ...(typeof params.substitutionGraceSeconds === "number"
         ? { substitutionGraceSeconds: params.substitutionGraceSeconds }
         : {}),
@@ -3827,6 +3838,9 @@ export class EscrowClient {
       this.maybeAutoAccept(escrowId).catch(e =>
         console.debug("[escrow] Post-reload lock accept:", e?.message || e)
       );
+      this.maybeAutoRelease(escrowId).catch(e =>
+        console.debug("[escrow] Post-reload lock release:", e?.message || e)
+      );
       this.maybeAutoResolve(escrowId).catch(e =>
         console.debug("[escrow] Post-reload auto-resolve:", e?.message || e)
       );
@@ -4029,6 +4043,11 @@ export class EscrowClient {
       if (parsed.kind === EscrowEventKind.LOCK) {
         this.maybeAutoAccept(escrowId).catch(e =>
           console.debug("[escrow] Incoming-lock accept failed:", e)
+        );
+      }
+      if (parsed.kind === EscrowEventKind.LOCK_STEP) {
+        this.maybeAutoRelease(escrowId).catch(e =>
+          console.debug("[escrow] Incoming-accept release failed:", e)
         );
       }
 
@@ -4741,6 +4760,189 @@ export class EscrowClient {
     } finally {
       this.lockAcceptsInFlight.delete(key);
     }
+  }
+
+  /** #43 writer: the store holding this device's withheld share plaintexts. */
+  get withheldShareStore(): WithheldShareStore {
+    return this.config.withheldShareStore ??= defaultWithheldShareStore();
+  }
+
+  /** The withheld LOCK this signer funded, while it is still unreleased. */
+  private ownUnreleasedWithheldLock(state: EscrowState | undefined, me: string) {
+    // EXPIRED too: a late accept can land after the deadline, and the reader
+    // still takes a release (or a withdraw) then. Without it the sats would sit
+    // with no release, no take-back and no vote.
+    if (!state || (state.status !== EscrowStatus.LOCKED && state.status !== EscrowStatus.EXPIRED)
+        || !usesWithheldShares(state) || state.chamaPolicy || state.lock.onchain || !state.lock.notesHash) return null;
+    const withheld = state.lock.withheld;
+    if (!withheld || withheld.releaseEventId || withheld.lockerPubkey !== me) return null;
+    const lock = state.eventChain.find(e => e.kind === EscrowEventKind.LOCK);
+    if (!lock || lock.pubkey !== me) return null;
+    return { lock, withheld, notesHash: state.lock.notesHash };
+  }
+
+  private readonly lockReleasesInFlight = new Set<string>();
+  private readonly lockWithdrawsInFlight = new Map<string, Promise<EscrowState | null>>();
+  private readonly lockWithdrawsSent = new Set<string>();
+
+  /** #43 writer: the funder sends the two withheld shares as soon as it reads
+   *  the other principal's accept. No tap: the accept is the go-ahead. Never
+   *  after this device chose to withdraw, and never a share that does not
+   *  match the LOCK's own commitment. */
+  async maybeAutoRelease(escrowId: string): Promise<void> {
+    const state = this.states.get(escrowId);
+    // Past the deadline the trade can only end in a refund, so the funder takes
+    // the sats back (withdraw) instead of exposing the shares.
+    if (!state?.lock.acceptEventId || state.status !== EscrowStatus.LOCKED) return;
+    const me = await this.getPubkey();
+    const own = this.ownUnreleasedWithheldLock(state, me);
+    if (!own) return;
+    const key = `${escrowId}:${own.lock.raw.id}`;
+    if (this.lockReleasesInFlight.has(key) || this.lockWithdrawsInFlight.has(key)) return;
+    this.lockReleasesInFlight.add(key);
+    try {
+      const record = await this.heldBackShares(escrowId, own.lock as ParsedEscrowEvent<LockPayload>, own.notesHash);
+      if (!record) return;
+      const buyer = state.participants[Role.BUYER], seller = state.participants[Role.SELLER], arbiter = state.participants[Role.ARBITER];
+      if (!buyer || !seller || !arbiter) return;
+      const arbiterRecipients = state.lock.arbiterPoolShare
+        ? arbiterShareRecipientsFor({ escrowId, pool: state.communityArbiters ?? [], buyerPubkey: buyer, sellerPubkey: seller, assignedArbiter: arbiter })
+        : [arbiter];
+      const shares: LockShareEntry[] = [];
+      for (const shareIndex of [0, 1, 2].filter(index => index !== own.withheld.lockerShareIndex)) {
+        const plaintext = record.shares.find(share => share.shareIndex === shareIndex)?.plaintext;
+        if (plaintext === undefined || !releasedShareMatches(state, shareIndex, plaintext)) {
+          console.error(`[escrow] #43 ${escrowId}: saved share ${shareIndex} does not match the LOCK; not releasing`);
+          return;
+        }
+        const recipients = shareIndex === 2 ? arbiterRecipients : [shareIndex === 0 ? buyer : seller];
+        const encryptedFor: Record<string, string> = {};
+        for (const pk of recipients) encryptedFor[pk] = await this.signer.nip44Encrypt(plaintext, pk);
+        shares.push({ shareIndex, encryptedFor });
+      }
+      // Durable choice before signing: from here this LOCK is never withdrawn
+      // by this device. A crash after this line retries the release.
+      if (!this.withheldShareStore.choose(escrowId, own.notesHash, "release")) return;
+      const acceptEventId = state.lock.acceptEventId;
+      const payload: LockStepPayload = { type: "escrow:lock_step", step: "release", lockEventId: own.lock.raw.id, shares };
+      const signed = await this.signWithSimTag({
+        kind: EscrowEventKind.LOCK_STEP,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [
+          [TAGS.ESCROW_ID, escrowId],
+          [TAGS.PREV_EVENT, acceptEventId, "", "reply"],
+          [TAGS.TYPE, "escrow:lock_step"],
+        ],
+        content: JSON.stringify(payload),
+      });
+      const latest = this.states.get(escrowId);
+      if (!this.ownUnreleasedWithheldLock(latest, me) || latest!.lock.acceptEventId !== acceptEventId) return;
+      await this.relayManager.publish(signed);
+      this.applyLocally(escrowId, signed, payload);
+    } finally {
+      this.lockReleasesInFlight.delete(key);
+    }
+  }
+
+  /** The held-back shares for this LOCK: this device's saved copy, else the
+   *  LOCK's own encrypted-to-self backup (another of the funder's devices
+   *  funded). Null when this device retired these notes (withdrawn or
+   *  refused and taken back), so they are never released after coming back. */
+  private async heldBackShares(escrowId: string, lock: ParsedEscrowEvent<LockPayload>, notesHash: string) {
+    const store = this.withheldShareStore;
+    const saved = store.load(escrowId, notesHash);
+    if (saved?.step === "withdraw") return null;
+    if (saved && saved.shares.length === 2) return saved;
+    const backup = lock.payload.withheldBackup;
+    if (!backup) {
+      console.warn(`[escrow] #43 ${escrowId}: accepted, but no copy of the held-back shares is available here`);
+      return null;
+    }
+    // Releasing from the backup means another device funded. This device has
+    // no memory of a withdraw there, so read the whole history first: a
+    // withdraw in it means the notes may already be back in a wallet, and a
+    // release would turn that into a hollow escrow.
+    const fresh = await this.loadEscrow(escrowId, { fullHistory: true });
+    if (!fresh || !this.ownUnreleasedWithheldLock(fresh, lock.pubkey) || !fresh.lock.acceptEventId
+        || fresh.eventChain.find(e => e.kind === EscrowEventKind.LOCK)?.raw.id !== lock.raw.id) return null;
+    try {
+      const shares = JSON.parse(await this.signer.nip44Decrypt(backup, lock.pubkey)) as { shareIndex: number; plaintext: string }[];
+      if (!Array.isArray(shares) || shares.length !== 2) return null;
+      const record = { escrowId, notesHash, shares: shares.map(s => ({ shareIndex: s.shareIndex, plaintext: String(s.plaintext) })), savedAt: Date.now() };
+      // Saved first, so the one-step rule holds on this device from here on.
+      return store.save(record) ? store.load(escrowId, notesHash) : null;
+    } catch (error) {
+      console.warn(`[escrow] #43 ${escrowId}: could not open the held-back share backup`, error);
+      return null;
+    }
+  }
+
+  /** #43 writer: should the funder see "Take your sats back"? Before the
+   *  other side accepts; after it, when this device already chose to withdraw
+   *  (a withdraw that failed to send must be retryable, or the sats would sit
+   *  with no release and no take-back), or when the deadline passed before a
+   *  release (an accept that arrived late is never released). */
+  canWithdrawWithheldLock(state: EscrowState | undefined, me: string | null | undefined): boolean {
+    if (!me) return false;
+    const own = this.ownUnreleasedWithheldLock(state, me);
+    if (!own) return false;
+    const step = this.withheldShareStore.load(state!.id, own.notesHash)?.step;
+    if (step === "release") return false;
+    return !state!.lock.acceptEventId || step === "withdraw" || state!.status === EscrowStatus.EXPIRED;
+  }
+
+  /** #43 writer: "Take your sats back". Signs WITHDRAW for this signer's own
+   *  unreleased withheld LOCK and reloads the trade, which then reads as open
+   *  with the LOCK refused (WITHDRAWN_BEFORE_ACCEPT); the saved notes come back
+   *  through the normal refused-lock recovery. A second tap while the first is
+   *  running gets the same result and publishes nothing new. */
+  async withdrawWithheldLock(escrowId: string): Promise<EscrowState | null> {
+    const state = this.states.get(escrowId);
+    if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+    const me = await this.getPubkey();
+    const own = this.ownUnreleasedWithheldLock(state, me);
+    // A second tap that queued behind a successful withdraw: same answer.
+    if (!own && [...this.lockWithdrawsSent].some(k => k.startsWith(`${escrowId}:`))) return state;
+    if (!own) throw new Error("There is no funding of yours waiting to be taken back on this trade.");
+    const key = `${escrowId}:${own.lock.raw.id}`;
+    const running = this.lockWithdrawsInFlight.get(key);
+    if (running) return running;
+    // Already sent from here: a stale read must not publish a second one.
+    if (this.lockWithdrawsSent.has(key)) return this.loadEscrow(escrowId);
+    if (this.lockReleasesInFlight.has(key)) throw new Error("Your funding is being sent on to the trade right now. Reopen the trade in a moment.");
+    const work = (async () => {
+      const store = this.withheldShareStore;
+      // No saved record means another device funded; this device cannot
+      // release, so a withdraw from here never races a release from here.
+      const saved = store.load(escrowId, own.notesHash);
+      if (saved?.step === "release") {
+        throw new Error("Your funding was already sent on to the trade, so it can't be taken back here.");
+      }
+      if (!store.retire(escrowId, own.notesHash)) {
+        throw new Error("Chama couldn't save your choice on this device, so nothing was sent. Try again.");
+      }
+      const payload: LockStepPayload = { type: "escrow:lock_step", step: "withdraw", lockEventId: own.lock.raw.id };
+      const signed = await this.signWithSimTag({
+        kind: EscrowEventKind.LOCK_STEP,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [
+          [TAGS.ESCROW_ID, escrowId],
+          [TAGS.PREV_EVENT, own.lock.raw.id, "", "reply"],
+          [TAGS.TYPE, "escrow:lock_step"],
+        ],
+        content: JSON.stringify(payload),
+      });
+      const latest = this.states.get(escrowId);
+      if (!this.ownUnreleasedWithheldLock(latest, me)) {
+        throw new Error("This trade changed while you were taking your funding back. Reopen it and check.");
+      }
+      await this.relayManager.publish(signed);
+      this.lockWithdrawsSent.add(key);
+      this.setHotRawEvents(escrowId, mergeRawEventsById(this.rawEvents.get(escrowId) ?? [], [signed]));
+      return this.loadEscrow(escrowId);
+    })();
+    this.lockWithdrawsInFlight.set(key, work);
+    try { return await work; } finally { this.lockWithdrawsInFlight.delete(key); }
   }
 
   private async maybeAutoResolve(escrowId: string): Promise<void> {

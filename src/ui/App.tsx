@@ -4465,6 +4465,7 @@ export default function App() {
           {LIVE_TRADE_SURFACE_ENABLED && !expertTradeView ? (
             <LiveTradeSurface
               onReclaimRejectedLock={actions.reclaimRejectedLock}
+              onWithdrawWithheldLock={actions.withdrawWithheldLock}
               orderMismatchesListing={selectedOrderMismatchesListing}
               key={`lts:${selected.id}`}
               historyReloading={reloadingEscrows.has(selected.id)}
@@ -4537,6 +4538,7 @@ export default function App() {
           ) : (
           <TradeDetail
             onReclaimRejectedLock={actions.reclaimRejectedLock}
+              onWithdrawWithheldLock={actions.withdrawWithheldLock}
             key={`${selected.id}:${(() => {
               const p = getEffectiveParticipantsAt(selected, Math.floor(Date.now() / 1000));
               return p.buyer === pubkey ? "buyer"
