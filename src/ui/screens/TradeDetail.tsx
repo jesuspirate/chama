@@ -174,7 +174,7 @@ const textLinkButtonStyle: React.CSSProperties = { background: "none", border: "
 export function TradeDetail({
   state, pubkey, homeCommunity, bootProbeFailed, receiveUnavailable, fundingInProgress,
   claimBlockedReason, amountDisplayMode = "sats", onAmountDisplayModeChange, kind0Enabled = false, profileNames,
-  disableNwc = false, forceClaimMethodChooser = false, onBack, onVote, onClaim, onJoin, onLock, onLockDirectNwc, onReclaimRejectedLock, onClaimDirectNwc, onConfirmPayout,
+  disableNwc = false, forceClaimMethodChooser = false, onBack, onVote, onClaim, onJoin, onLock, onLockDirectNwc, onReclaimRejectedLock, onWithdrawWithheldLock, onClaimDirectNwc, onConfirmPayout,
   onSendChat, preferredRelayConnected = false, onReleasePeriod, onOpenSettings, onOpenNwcSettings,
   onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false, orderMismatchesListing = false,
   onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPrepareOnchainFunding, onCheckOnchainFunding, onRefundOnchainEscrow, onOnchainRefundAvailable, onPublishOnchainLock, onCheckOnchainSettlement, onOpenExplorerSettings, onchainObservation, onRequestStalledPayout, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
@@ -272,6 +272,8 @@ export function TradeDetail({
     opts?: { selectedItems?: SelectedMenuItem[]; amountMsats?: number; orderFinalized?: boolean },
   ) => void | Promise<void>;
   onReclaimRejectedLock?: (id: string) => Promise<void>;
+  /** #43: take back a withheld funding nobody has accepted yet. */
+  onWithdrawWithheldLock?: (id: string) => Promise<void>;
   onLock: (opts?: {
     savedHandleId?: string;
     paymentDetailsInChat?: boolean;
@@ -1618,7 +1620,7 @@ export function TradeDetail({
 
   return (
     <div className="trade-detail-shell">
-      <WithheldSharesNotice state={state} pubkey={pubkey} t={t} />
+      <WithheldSharesNotice state={state} pubkey={pubkey} t={t} onWithdraw={onWithdrawWithheldLock} />
       {state.rejectedLockRecovery?.pubkey === pubkey && onReclaimRejectedLock &&
         <RejectedLockRefund amountMsats={state.rejectedLockRecovery.amountMsats} onReclaim={() => onReclaimRejectedLock(state.id)} />}
 

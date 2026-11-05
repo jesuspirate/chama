@@ -12,7 +12,11 @@ export const trade: Record<string, string> = {
 
   "trade.lockReabsorbed": "Your {amount} sats are back in your wallet.",
 
-  "trade.sharesWaitingFunder": "Your sats are sent. The trade starts once the other side accepts.",
+  "trade.sharesWaitingFunder": "Your sats are set aside for this trade. It starts once the other side accepts. Until then you can take them back.",
+  "trade.sharesSendingFunder": "The other side accepted. Chama is sending your funding on to the trade.",
+  "trade.sharesExpiredFunder": "This trade passed its deadline before it started. Take your sats back.",
+  "trade.sharesWithdrawRetry": "Taking your sats back didn't finish. Try again.",
+  "trade.takeSatsBack": "Take your sats back",
 
   "trade.sharesWaitingOther": "The sats are on their way but not held for this trade yet. Don't send money or deliver anything yet.",
   "trade.responseHours": "{count} hours",

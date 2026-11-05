@@ -12,7 +12,11 @@ export const trade: Record<string, string> = {
 
   "trade.lockReabsorbed": "Tus {amount} sats están de vuelta en tu cartera.",
 
-  "trade.sharesWaitingFunder": "Tus sats están enviados. El intercambio empieza cuando la otra parte acepte.",
+  "trade.sharesWaitingFunder": "Tus sats están apartados para este intercambio. Empieza cuando la otra parte acepte. Hasta entonces puedes recuperarlos.",
+  "trade.sharesSendingFunder": "La otra parte aceptó. Chama está enviando tus fondos al intercambio.",
+  "trade.sharesExpiredFunder": "Este intercambio venció antes de empezar. Recupera tus sats.",
+  "trade.sharesWithdrawRetry": "No se terminó de recuperar tus sats. Inténtalo de nuevo.",
+  "trade.takeSatsBack": "Recuperar tus sats",
 
   "trade.sharesWaitingOther": "Los sats van en camino, pero aún no están retenidos para este intercambio. No envíes dinero ni entregues nada todavía.",
   "trade.responseHours": "{count} horas",

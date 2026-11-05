@@ -257,7 +257,7 @@ Only before LOCK. `CREATED → CANCELLED`.
 
 ### LOCK_STEP (`8118`): refused-lock rules
 
-In force for trades whose CREATE is signed at or after `2027-02-01T00:00:00Z`.
+In force for trades whose CREATE is signed at or after `2026-12-01T00:00:00Z`.
 Older trades keep the rules they were created under, and a reader ignores
 LOCK_STEP on them.
 
@@ -296,6 +296,23 @@ every predecessor. Circle shares do not use these steps.
 
 A refused withheld LOCK (cancelled before it, or order not finalized) never
 gave the seller or arbiter a share, so they cannot rebuild the notes.
+
+Writer policy (Chama, not consensus): a funder writes the withheld shape only
+when the other principal has signed an event in the trade whose `client` tag
+shows Chama 6.4.34 or later, since an older app can neither accept nor read a
+release. Otherwise it writes today's all-shares LOCK, which every reader
+accepts on a gated trade too. The funder's app sends the release on its own as
+soon as it reads the accept, and never after the trade's deadline (the funder
+withdraws instead). A withheld LOCK may also carry `withheldBackup`: the two
+held-back plaintexts NIP-44 encrypted by the funder to the funder, so any of
+the funder's devices can release. Readers ignore it.
+
+Limits of this policy: the version evidence is a tag the other principal
+signs, so a counterparty who wants today's all-shares LOCK can get it by
+showing an older version; the protection holds against everyone else. The
+arbiter's app version is not checked: an arbiter app older than 6.4.34 does
+not read the release, so it must update before it can decide a dispute on a
+withheld-shares trade.
 
 ### CHAT (`8108`)
 

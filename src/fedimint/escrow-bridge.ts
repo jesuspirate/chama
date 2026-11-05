@@ -72,6 +72,9 @@ import { getSavedHandle } from "../payments/saved-handles.js";
 import { pickArbiterFromPool, pickPreferredArbiter } from "../arbiters/pool.js";
 import { verifyBondedStamp } from "../arbiters/bonded-stamp.js";
 import { isSimModeOn } from "../sim/simMode.js";
+import { usesWithheldShares } from "../escrow-engine/protocol-hardening.js";
+import { signsWithWithheldShareReader } from "../escrow-engine/client-tag.js";
+import { shareCommitment } from "../escrow-engine/holder-shares.js";
 import { buildChamaOperationMeta, recordSatsTrace, type ChamaOperationMeta } from "../payments/sats-trace.js";
 import { receiveFediEcash } from "./fedi-internal.js";
 import { effectiveCreateFederationId } from "./federation-config.js";
@@ -359,6 +362,37 @@ export class EscrowFedimintBridge {
     return { state, buyerPubkey, sellerPk, arbiterPubkey, expectedFed: expectedFed ?? null };
   }
 
+  /** #43 writer: the share index this funder keeps when the LOCK may withhold
+   *  the other two, or null for today's all-shares LOCK. Saves the two
+   *  held-back shares first and reads them back; a save that does not stick
+   *  means null, so a funder never publishes a LOCK it cannot release. */
+  private withheldShareIndex(
+    state: EscrowState,
+    lockBundle: EscrowLockBundle,
+    participants: { buyerPubkey: string; sellerPk: string; lockerPubkey: string },
+  ): number | null {
+    const { buyerPubkey, sellerPk, lockerPubkey } = participants;
+    if (!usesWithheldShares(state) || state.chamaPolicy || lockBundle.shares.length !== 3) return null;
+    const lockerIndex = lockerPubkey === buyerPubkey ? 0 : lockerPubkey === sellerPk ? 1 : null;
+    if (lockerIndex === null) return null;
+    const counterparty = lockerIndex === 0 ? sellerPk : buyerPubkey;
+    if (!signsWithWithheldShareReader(state.eventChain, counterparty)) return null;
+    try {
+      const saved = this.escrow.withheldShareStore.save({
+        escrowId: state.id,
+        notesHash: lockBundle.notesHash,
+        shares: [0, 1, 2].filter(i => i !== lockerIndex)
+          .map(shareIndex => ({ shareIndex, plaintext: JSON.stringify(lockBundle.shares[shareIndex]) })),
+        savedAt: Date.now(),
+      });
+      if (saved) return lockerIndex;
+      console.warn(`[chama] #43 ${state.id}: could not save the held-back shares; sending today's LOCK`);
+    } catch (error) {
+      console.warn(`[chama] #43 ${state.id}: held-back share store unavailable; sending today's LOCK`, error);
+    }
+    return null;
+  }
+
   private async publishLockBundle(
     escrowId: string,
     state: EscrowState,
@@ -371,9 +405,10 @@ export class EscrowFedimintBridge {
     opts: LockOptions = {},
   ): Promise<EscrowState> {
     const { buyerPubkey, sellerPk, arbiterPubkey } = participants;
+    const lockerPubkey = await this.escrow.getPubkey();
     const allPks = [buyerPubkey, sellerPk, arbiterPubkey];
 
-    const shares: { shareIndex: number; encryptedFor: Record<string, string> }[] = [];
+    const shares: { shareIndex: number; encryptedFor: Record<string, string>; commitment?: string }[] = [];
 
     // Holder-only-v1: encrypt each share to ONLY its assigned holder. allPks is
     // [buyer, seller, arbiter] — exactly the shareIndex→holder convention
@@ -401,8 +436,36 @@ export class EscrowFedimintBridge {
       sellerPubkey: sellerPk,
       assignedArbiter: arbiterPubkey,
     });
+    // #43 writer: on a trade under the refused-lock rules, send only the
+    // funder's own share now. The other two go out in a RELEASE once the other
+    // principal accepts, so a refused LOCK never hands the seller and arbiter
+    // two shares. Only when the other principal's app reads the new shape, and
+    // only once the two held-back shares are durably saved here; otherwise
+    // today's all-shares LOCK, which every reader accepts.
+    const withheldIndex = this.withheldShareIndex(state, lockBundle, { buyerPubkey, sellerPk, lockerPubkey });
+    // Encrypted to the funder alone, so any of the funder's devices can release.
+    // Sats have already moved here: a backup that can't be made (NIP-44 size
+    // cap on large notes, a signer that refuses) never stops the LOCK. This
+    // device's saved copy still releases it.
+    let withheldBackup: string | undefined;
+    if (withheldIndex !== null) {
+      try {
+        withheldBackup = await this.signer.nip44Encrypt(
+          JSON.stringify([0, 1, 2].filter(i => i !== withheldIndex)
+            .map(shareIndex => ({ shareIndex, plaintext: JSON.stringify(lockBundle.shares[shareIndex]) }))),
+          lockerPubkey,
+        );
+      } catch (error) {
+        console.warn(`[chama] #43 ${escrowId}: no backup of the held-back shares; only this device can release`, error);
+      }
+    }
     for (let i = 0; i < lockBundle.shares.length; i++) {
       const share = lockBundle.shares[i];
+      if (withheldIndex !== null && i !== withheldIndex) {
+        shares.push({ shareIndex: i, encryptedFor: {},
+          commitment: shareCommitment(escrowId, lockBundle.notesHash, i, JSON.stringify(share)) });
+        continue;
+      }
       const recipients = i === 2 && arbiterRecipients.length > 0
         ? arbiterRecipients
         : allPks[i] ? [allPks[i]] : [];
@@ -450,6 +513,7 @@ export class EscrowFedimintBridge {
       shares,
       sharePolicy: HOLDER_ONLY_SHARE_POLICY,
       arbiterPoolShare: arbiterRecipients.length > 0,
+      ...(withheldIndex !== null ? { withheldShares: true, ...(withheldBackup ? { withheldBackup } : {}) } : {}),
       ...(typeof opts.substitutionGraceSeconds === "number"
         ? { substitutionGraceSeconds: opts.substitutionGraceSeconds }
         : {}),
@@ -551,6 +615,21 @@ export class EscrowFedimintBridge {
       );
     }
     return outcome;
+  }
+
+  /** #43 writer: "Take your sats back" on a withheld LOCK nobody has accepted.
+   *  Under the per-trade lock mutex, so it never interleaves with a lock or a
+   *  recovery for the same trade. Publishes WITHDRAW, then brings the saved
+   *  notes back through the refused-lock recovery. */
+  async withdrawWithheldLock(escrowId: string): Promise<EscrowState | null> {
+    return withNativeLockFlow(escrowId, async () => {
+      const state = await this.escrow.withdrawWithheldLock(escrowId);
+      if (this.nativeLockGuardOn()) {
+        await this.settlePendingNativeLockInner(escrowId, { ignoreAttemptCap: true, reclaimRejected: true })
+          .catch(error => console.warn(`[chama] #43 ${escrowId}: withdraw published; notes come back on the next recovery pass`, error));
+      }
+      return state;
+    });
   }
 
   /**
@@ -753,6 +832,7 @@ export class EscrowFedimintBridge {
         committedNotesHash: resultState?.lock?.notesHash,
         expectedNotesHash: lockBundle.notesHash,
         custodyDurability: resultState?.lock?.custodyDurability,
+        withheldUnreleased: !!resultState?.lock?.withheld && !resultState.lock.withheld.releaseEventId,
       })) {
         // Positive relay confirmation — the LOCK committed OUR notes.
         clearPendingNativeLock(escrowId);
@@ -877,6 +957,7 @@ export class EscrowFedimintBridge {
       committedNotesHash: resultState?.lock?.notesHash,
       expectedNotesHash: lockBundle.notesHash,
       custodyDurability: resultState?.lock?.custodyDurability,
+      withheldUnreleased: !!resultState?.lock?.withheld && !resultState.lock.withheld.releaseEventId,
     })) {
       clearPendingNativeLock(escrowId);
     } else if (guardOn && replayed?.rejectedLocks?.length) {
