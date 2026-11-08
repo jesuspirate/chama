@@ -34,10 +34,7 @@ import { getCommunityBySlug } from "../../communities/registry.js";
 import { EscrowStatus, Role, type EscrowState } from "../../escrow-engine/types.js";
 import type { AggregateRatings } from "../../reputation/ratings.js";
 import { BitcoinConverter } from "../components/BitcoinConverter.js";
-
-const TERMINAL = new Set<EscrowStatus>([
-  EscrowStatus.COMPLETED, EscrowStatus.CANCELLED, EscrowStatus.CLAIMED,
-]);
+import { activeCommittedMsats, countActiveBuyerSellerCommitments } from "../decisions.js";
 
 /** Sats that actually moved: the trade reached a funded state at some point. */
 function movedMsats(e: EscrowState): number {
@@ -97,16 +94,22 @@ export function DashboardScreen({
 
   // Lean stats over the selected window (arbiter count stays lifetime).
   const stats = useMemo(() => {
-    let completed = 0, live = 0, asArbiter = 0;
+    let completed = 0, asArbiter = 0;
     for (const e of windowTrades) {
       if (e.status === EscrowStatus.COMPLETED) completed++;
-      else if (!TERMINAL.has(e.status)) live++;
     }
     for (const e of myTrades) {
       if (e.participants?.[Role.ARBITER]?.toLowerCase() === lower) asArbiter++;
     }
-    return { total: windowTrades.length, completed, live, asArbiter };
-  }, [windowTrades, myTrades, lower]);
+    // "Live now" is the status bar's count and sum, over every trade, not the
+    // window: only your own buyer/seller sats still locked, with a LOCK behind
+    // them. Expired locks, trades decided for someone else and trades you only
+    // arbitrate are not sats you have in escrow (Jet, 2026-11-07: the tile
+    // read 466,639 sats while Home and the status bar held none).
+    const live = countActiveBuyerSellerCommitments({ escrows: myTrades, userPubkey: pubkey, nowSec });
+    const liveSats = Math.floor(activeCommittedMsats({ escrows: myTrades, userPubkey: pubkey, nowSec }) / 1000);
+    return { total: windowTrades.length, completed, live, liveSats, asArbiter };
+  }, [windowTrades, myTrades, lower, pubkey, nowSec]);
 
   // Volume engine: 12 buckets across the window; sats that reached escrow.
   const volume = useMemo(() => {
@@ -114,9 +117,6 @@ export function DashboardScreen({
       .map((e) => ({ at: e.createdAt ?? 0, sats: Math.floor(movedMsats(e) / 1000) }))
       .filter((r) => r.sats > 0);
     const totalSats = moved.reduce((s, r) => s + r.sats, 0);
-    const liveMsats = windowTrades
-      .filter((e) => !TERMINAL.has(e.status) && e.status !== EscrowStatus.CREATED && e.status !== EscrowStatus.EXPIRED)
-      .reduce((s, e) => s + e.amountMsats, 0);
     const start = windowSec
       ? windowStart
       : Math.min(nowSec - 86400, ...moved.map((r) => r.at).filter((a) => a > 0));
@@ -138,7 +138,7 @@ export function DashboardScreen({
         deltaPct = Math.round(((totalSats - prior) / prior) * 100);
       }
     }
-    return { totalSats, buckets, start, deltaPct, liveSats: Math.floor(liveMsats / 1000) };
+    return { totalSats, buckets, start, deltaPct };
   }, [windowTrades, myTrades, windowSec, windowStart, nowSec]);
 
   // Where you trade: share of moved volume per live vertical.
@@ -300,7 +300,7 @@ export function DashboardScreen({
         <StatTile label={t("bond.dashStatTrades")} value={String(stats.total)} />
         <StatTile label={t("bond.dashStatCompleted")} value={String(stats.completed)} accent={T.green} />
         <StatTile label={t("bond.dashStatLive")} value={String(stats.live)} accent={stats.live > 0 ? T.purple : undefined}
-          sub={volume.liveSats > 0 ? t("dash.liveEscrow", { sats: volume.liveSats.toLocaleString() }) : undefined} />
+          sub={stats.liveSats > 0 ? t("dash.liveEscrow", { sats: stats.liveSats.toLocaleString() }) : undefined} />
         <StatTile label={t("dash.ratingTile")} value={ratePct !== null ? `${ratePct}%` : "—"}
           sub={ratings && ratings.count > 0 ? t("me.ratingsFromTradesMany", { count: ratings.count }) : t("me.reputationNone")} />
       </div>
