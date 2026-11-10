@@ -77,7 +77,9 @@ import { signsWithWithheldShareReader } from "../escrow-engine/client-tag.js";
 import { shareCommitment } from "../escrow-engine/holder-shares.js";
 import { buildChamaOperationMeta, recordSatsTrace, type ChamaOperationMeta } from "../payments/sats-trace.js";
 import { receiveFediEcash } from "./fedi-internal.js";
-import { closingFederation, effectiveCreateFederationId } from "./federation-config.js";
+import { closingDateLabel, closingFederation, effectiveCreateFederationId } from "./federation-config.js";
+import { listPaidLockRecoveries } from "../payments/paid-lock-recovery.js";
+import { getCurrentLang, translate } from "../i18n/index.js";
 
 function claimTraceEnabled(): boolean {
   try {
@@ -855,7 +857,7 @@ export class EscrowFedimintBridge {
     // Only before funding: once sats have moved (a paid invoice, a resumed
     // lock) the lock goes ahead on them, so they reach escrow and settle
     // rather than sit in a wallet on that federation.
-    if (!opts.afterSatsMoved) this.assertFederationTakesNewFunding(expectedFed);
+    if (!opts.afterSatsMoved) this.assertFederationTakesNewFunding(escrowId, expectedFed);
     // Require where the cash goes before new funding. Once this trade's sats
     // have arrived (a paid invoice, a claimed deposit) a missing or changed
     // detail never blocks the lock: it publishes without one and the buyer
@@ -867,14 +869,18 @@ export class EscrowFedimintBridge {
   /** Refuse new funding on a federation in CLOSING_FEDERATIONS, before any
    *  sats move. Checks the trade's committed federation and, for a legacy
    *  trade that stamped none, the wallet the sats would come from. */
-  private assertFederationTakesNewFunding(expectedFed: string | null): void {
+  private assertFederationTakesNewFunding(escrowId: string, expectedFed: string | null): void {
     if (isSimModeOn()) return;
     const closing = closingFederation(expectedFed) ?? closingFederation(this.fedimint?.getFederationId?.() ?? null);
     if (!closing) return;
-    const err: any = new Error(
-      `This federation closes on ${closing.closesOn}, so Chama no longer puts new sats on it. ` +
-      `Ask for this trade to be posted again on your community's new federation. (No sats were spent.)`,
-    );
+    // Sats of yours already moved for THIS trade (a stashed lock from an
+    // earlier attempt, or a paid invoice whose lock was refused and refunded
+    // to the wallet): finishing the lock is how they reach escrow and settle,
+    // so it is never blocked here (AGENTS.md "after sats move"). The resume
+    // path settles the stash first; nothing new is bought.
+    if (getPendingNativeLock(escrowId) || listPaidLockRecoveries().some(row => row.escrowId === escrowId)) return;
+    const lang = getCurrentLang();
+    const err: any = new Error(translate(lang, "fund.federationClosing", { date: closingDateLabel(closing.closesOn, lang) }));
     err.code = "FEDERATION_CLOSING";
     err.federationId = closing.federationId;
     err.closesOn = closing.closesOn;

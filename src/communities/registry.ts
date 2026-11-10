@@ -523,13 +523,14 @@ export function communityForInvite(invite: string | null | undefined): Community
   if (visible) return visible;
   const anyPreSeed = COMMUNITY_REGISTRY.find(c => c.federationInvite === invite);
   if (anyPreSeed) return anyPreSeed;
-  const custom = getCustomCommunities().find(c => c.federationInvite === invite);
-  if (custom) return custom;
-  // 6.4.35: a wallet still on a closing federation belongs to the community
-  // that used to name it (its people are moving with that community).
-  return COMMUNITY_REGISTRY.find(c => c.historicalFederationInvite === invite && !c.hiddenFromPicker)
-    ?? COMMUNITY_REGISTRY.find(c => c.historicalFederationInvite === invite)
-    ?? null;
+  // 6.4.35: a wallet still on a closing federation belongs to the first
+  // pre-seed (registry order) that used to name it: us-blf, us-gbf, then the
+  // federation's own public route — what 6.4.34 picked for that invite (it
+  // checked pre-seeds before custom communities), never a country shell that
+  // merely defaulted to it.
+  const formerPreSeed = COMMUNITY_REGISTRY.find(c => c.historicalFederationInvite === invite);
+  if (formerPreSeed) return formerPreSeed;
+  return getCustomCommunities().find(c => c.federationInvite === invite) ?? null;
 }
 
 /** Default community when the user hasn't picked one yet. In v6, us-blf is

@@ -161,6 +161,53 @@ await preflight(BLF_V2_FEDERATION_ID, BLF_V2_FEDERATION_ID);
 await preflight(FREEDOM_MONEY_FEDERATION_ID, FREEDOM_MONEY_FEDERATION_ID);
 // A wrong-wallet trade still fails on the existing federation check, not ours.
 await assert.rejects(preflight(BLF_V2_FEDERATION_ID, BLF_FEDERATION_ID), (e: any) => e.code === "FED_MISMATCH");
+// Second review, finding 2: sats of yours already moved for THIS trade (a
+// stashed lock from an earlier attempt, or a paid invoice whose lock was
+// refused and refunded) are never stranded by the gate: the lock may finish.
+{
+  const { stashNativeLockIntent, clearPendingNativeLock } = await import("./pending-native-locks.js");
+  const { recordPaidLockRecovery } = await import("../payments/paid-lock-recovery.js");
+  const id = tradeOn(BLF_FEDERATION_ID).id;
+  stashNativeLockIntent({ escrowId: id, amountMsats: 100_000_000, federationId: BLF_FEDERATION_ID });
+  await preflight(BLF_FEDERATION_ID, BLF_FEDERATION_ID);
+  clearPendingNativeLock(id);
+  await assert.rejects(preflight(BLF_FEDERATION_ID, BLF_FEDERATION_ID), (e: any) => e.code === "FEDERATION_CLOSING",
+    "with nothing of yours moved for this trade, the gate is back");
+  recordPaidLockRecovery(id, BLF_FEDERATION_ID, 100_000_000, "test refusal");
+  await preflight(BLF_FEDERATION_ID, BLF_FEDERATION_ID);
+}
 assert.equal(spends, 0, "no attempt spent a note");
+
+// ── 8. Claiming a trade on a closing federation after the move (finding 1) ──
+{
+  const { decideListingTapEffect, countActiveBuyerSellerCommitmentsOffFederation, createFederationFacts } = await import("../ui/decisions.js");
+  const { EscrowStatus } = await import("../escrow-engine/types.js");
+  const lockedAt = Math.floor(now / 1000) - 60;
+  const oldTrade = { ...tradeOn(BLF_FEDERATION_ID), status: EscrowStatus.LOCKED, lock: { ...(f.state.lock ?? {}), lockedAt } as any };
+  const listing = { mintUrl: BLF_FEDERATION_INVITE, community: "us-blf", fedId: createFederationFacts(oldTrade as any).fed };
+  assert.equal(listing.fedId, BLF_FEDERATION_ID);
+  // The fed-agnostic count alone blocks: this is what stranded the claim.
+  assert.equal(decideListingTapEffect({ listing, currentInvite: BLF_V2_FEDERATION_INVITE, balanceMsats: 0,
+    activeCommitmentCount: 1 }).kind, "blocked-active-commitment");
+  const seller = f.pks.seller;
+  const nowSec = Math.floor(now / 1000);
+  const total = (await import("../ui/decisions.js")).countActiveBuyerSellerCommitments({ escrows: [oldTrade as any], userPubkey: seller, nowSec });
+  const elsewhere = countActiveBuyerSellerCommitmentsOffFederation({ escrows: [oldTrade as any], userPubkey: seller, nowSec,
+    federationId: config.effectiveCreateFederationId(createFederationFacts(oldTrade as any)) });
+  assert.equal(total, 1, "the locked trade is a live commitment");
+  assert.equal(elsewhere, 0, "it is on the target federation, so it strands nothing there");
+  const effect = decideListingTapEffect({ listing, currentInvite: BLF_V2_FEDERATION_INVITE, balanceMsats: 0,
+    activeCommitmentCount: total, activeCommitmentCountElsewhere: elsewhere, acceptsUnlistedFederation: () => true });
+  assert.equal(effect.kind, "switch-silent", "claiming reaches the trade's own (closing) federation");
+  // A live trade on another federation still blocks the move.
+  const v2Trade = { ...tradeOn(BLF_V2_FEDERATION_ID), id: "v2-other", status: EscrowStatus.LOCKED, lock: { lockedAt } as any };
+  assert.equal(countActiveBuyerSellerCommitmentsOffFederation({ escrows: [oldTrade as any, v2Trade as any], userPubkey: seller, nowSec,
+    federationId: BLF_FEDERATION_ID }), 1);
+}
+
+// ── 9. A wallet with no home on a closing route keeps 6.4.34's community (finding 4) ──
+assert.equal(registry.communityForInvite(OCA_FEDERATION_INVITE)?.slug, "fedi-orange-club-africa");
+assert.equal(registry.communityForInvite(LATNET_FEDERATION_INVITE)?.slug, "fedi-latnet");
+assert.equal(registry.communityForInvite(GBF_FEDERATION_INVITE)?.slug, "us-gbf");
 
 console.log("federation v2 migration: invites, closing set, defaults, wire meaning, shells and funding gate pinned");

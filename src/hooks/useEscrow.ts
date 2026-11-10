@@ -2482,7 +2482,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     //
     // deriveCreateFedTags handles probeResult: null cleanly: it emits
     // `fed` from cachedFedId alone and omits `fedPrefix`.
-    const cachedFedId = fedimintRef.current?.getFederationId() ?? null;
+    // 6.4.35: with no joined wallet, stamp the federation the listing's own
+    // mintUrl names. An unstamped listing is read through its community's
+    // ORIGINAL federation by every version (communityWireInvite), so a new
+    // us-blf listing without `fed` would point at the closing first BLF.
+    const cachedFedId = fedimintRef.current?.getFederationId()
+      ?? expectedFederationIdForInvite((params as { mintUrl?: string }).mintUrl)
+      ?? null;
     const fedTags = deriveCreateFedTags({ cachedFedId, probeResult: null });
     // 6.4.35: no new listing on a federation that announced its shutdown.
     // Create moves no sats; refusing here keeps a lock from ever being asked
@@ -5577,10 +5583,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       if (!isSimModeOn()) assertPaidLockRecoveryWritable();
       if (opts.fundingMethod === "onchain") assertOnchainFundingWindow(requireClient().getState(escrowId)!);
     } catch (e) {
-      const closingCode = (e as { code?: string; closesOn?: string } | null);
-      const err = closingCode?.code === "FEDERATION_CLOSING" && closingCode.closesOn
-        ? translate(getCurrentLang(), "fund.federationClosing", { date: closingDateLabel(closingCode.closesOn, getCurrentLang()) })
-        : errorText(e, "This trade is not ready to fund");
+      const err = errorText(e, "This trade is not ready to fund");
       opts.onPhase({ kind: "lock-failed", error: err });
       return { kind: "lock-failed", error: err };
     }

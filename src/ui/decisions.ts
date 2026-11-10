@@ -633,6 +633,42 @@ export function countActiveBuyerSellerCommitments(inputs: {
 }
 
 /**
+ * 6.4.35: live buyer/seller commitments on a federation OTHER than
+ * `federationId` — the `activeCommitmentCountElsewhere` input of
+ * decideListingTapEffect. Moving to a trade's own federation to fund or
+ * claim it strands nothing on that federation; only commitments elsewhere
+ * should block. A commitment whose federation can't be read counts as
+ * elsewhere (fail closed). Needed once people's home federations moved
+ * (6.4.35) while their open trades stayed on the old ones.
+ */
+export function countActiveBuyerSellerCommitmentsOffFederation(inputs: {
+  escrows: Iterable<EscrowState>;
+  userPubkey: string;
+  federationId: string | null | undefined;
+  nowSec?: number;
+}): number {
+  const nowSec = inputs.nowSec ?? Math.floor(Date.now() / 1000);
+  const target = normalizeFedId(inputs.federationId);
+  let n = 0;
+  for (const e of inputs.escrows) {
+    if (!isEffectiveBuyerOrSeller(e, inputs.userPubkey, nowSec)) continue;
+    if (!isLiveBuyerSellerCommitment(e, nowSec, inputs.userPubkey)) continue;
+    if (isSomeoneElsesCircleSeat(e, inputs.userPubkey, nowSec)) continue;
+    const fed = normalizeFedId(effectiveCreateFederationId(createFederationFacts(e)));
+    if (target && fed === target) continue;
+    n += 1;
+  }
+  return n;
+}
+
+/** The route facts a trade's CREATE committed to, in the shape
+ *  effectiveCreateFederationId reads. */
+export function createFederationFacts(e: EscrowState): { fed: string | null; mintUrl: string; community: string | null } {
+  const payload = e.eventChain[0]?.payload as { fed?: string } | undefined;
+  return { fed: payload?.fed ?? null, mintUrl: e.mintUrl, community: e.community ?? null };
+}
+
+/**
  * v0.6.5: total msats across all live buyer/seller commitments the
  * user is in. Drives the ActiveTradePill's amount headline.
  *
