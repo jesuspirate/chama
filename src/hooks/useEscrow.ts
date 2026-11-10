@@ -305,6 +305,8 @@ import {
   shouldReconcileFederation,
   federationNameForInvite,
   deriveCreateFedTags,
+  closingFederation,
+  closingDateLabel,
   effectiveCreateFederationId,
   expectedFederationIdForInvite,
   arbiterFederationStorageScope,
@@ -2480,8 +2482,27 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     //
     // deriveCreateFedTags handles probeResult: null cleanly: it emits
     // `fed` from cachedFedId alone and omits `fedPrefix`.
-    const cachedFedId = fedimintRef.current?.getFederationId() ?? null;
+    // 6.4.35: with no joined wallet, stamp the federation the listing's own
+    // mintUrl names. An unstamped listing is read through its community's
+    // ORIGINAL federation by every version (communityWireInvite), so a new
+    // us-blf listing without `fed` would point at the closing first BLF.
+    const cachedFedId = fedimintRef.current?.getFederationId()
+      ?? expectedFederationIdForInvite((params as { mintUrl?: string }).mintUrl)
+      ?? null;
     const fedTags = deriveCreateFedTags({ cachedFedId, probeResult: null });
+    // 6.4.35: no new listing on a federation that announced its shutdown.
+    // Create moves no sats; refusing here keeps a lock from ever being asked
+    // for on it. On-chain escrow doesn't use a federation.
+    const closing = (params as { escrowMode?: string }).escrowMode === "onchain" || isSimModeOn()
+      ? null
+      : closingFederation(cachedFedId);
+    if (closing) {
+      const lang = getCurrentLang();
+      const err: any = new Error(translate(lang, "app.federationClosingCreate", { date: closingDateLabel(closing.closesOn, lang) }));
+      err.code = "FEDERATION_CLOSING";
+      err.closesOn = closing.closesOn;
+      throw err;
+    }
 
     // Sandbox/test lever: override the default trade expiry for CREATEs made
     // on THIS device. Consensus-safe by construction — expirySeconds becomes

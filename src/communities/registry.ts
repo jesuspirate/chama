@@ -29,6 +29,11 @@ import {
   BITSACCO_FEDERATION_INVITE,
   BLF_FEDERATION_INVITE,
   BLF_FEDERATION_NAME,
+  BLF_V2_FEDERATION_INVITE,
+  BLF_V2_FEDERATION_NAME,
+  FREEDOM_MONEY_FEDERATION_INVITE,
+  FREEDOM_MONEY_FEDERATION_NAME,
+  closingFederation,
   GBF_FEDERATION_INVITE,
   OCA_FEDERATION_INVITE,
   OCA_FEDERATION_NAME,
@@ -101,6 +106,11 @@ export interface Community {
    *  for slugs we're sunsetting from the curated list while preserving
    *  back-compat. */
   hiddenFromPicker: boolean;
+  /** 6.4.35: set when this slug was repointed to a new federation because
+   *  its first one is closing. The invite the slug meant before then, which
+   *  is still what it means on an already-signed CREATE (communityWireInvite).
+   *  Absent ⇒ the slug never moved. */
+  historicalFederationInvite?: string | null;
 }
 
 /** Shared notes string. 2026-06-25: the G-Bot federations (GBF, BLF, OCA,
@@ -171,8 +181,20 @@ const LATAM_COUNTRY_CODES: ReadonlySet<string> = new Set([
 ]);
 
 /** The default backing federation for a country with no real local Chama.
- *  Regional: Africa→OCA, Latin America→LatNet, else→BLF. */
+ *  6.4.35: Latin America→Freedom Money (LatNet's named successor), everywhere
+ *  else including Africa→the new BLF. Orange Club Africa and LatNet close on
+ *  2026-12-15; Orange Club Africa named no successor. */
 export function defaultFederationForCountry(
+  country: string | null,
+): { invite: string; name: string } {
+  const cc = (country ?? "").toUpperCase();
+  if (LATAM_COUNTRY_CODES.has(cc)) return { invite: FREEDOM_MONEY_FEDERATION_INVITE, name: FREEDOM_MONEY_FEDERATION_NAME };
+  return { invite: BLF_V2_FEDERATION_INVITE, name: BLF_V2_FEDERATION_NAME };
+}
+
+/** The regional default up to 6.4.34, frozen. Country slugs created then
+ *  still mean these federations on signed CREATEs (communityWireInvite). */
+export function legacyFederationForCountry(
   country: string | null,
 ): { invite: string; name: string } {
   const cc = (country ?? "").toUpperCase();
@@ -187,6 +209,7 @@ export function defaultFederationForCountry(
 export function defaultCountryChama(seed: CountryChamaSeed): Community {
   const currency = seed.currency.toUpperCase();
   const fed = defaultFederationForCountry(seed.country);
+  const legacy = legacyFederationForCountry(seed.country);
   return {
     slug: seed.slug ?? `${seed.country.toLowerCase()}-${currency.toLowerCase()}`,
     displayName: seed.displayName ?? `${seed.name} · ${currency}`,
@@ -200,6 +223,7 @@ export function defaultCountryChama(seed: CountryChamaSeed): Community {
     notes: `${NATIVE_VERIFIED_NOTE} Default route: ${fed.name}.`,
     disambiguator: null,
     hiddenFromPicker: false,
+    ...(legacy.invite !== fed.invite ? { historicalFederationInvite: legacy.invite } : {}),
   };
 }
 
@@ -233,20 +257,32 @@ const KENYA_BITSACCO_CHAMA: Community = {
   hiddenFromPicker: false,
 };
 
+/** 6.4.35: where a closing public Fedi route's people go. LatNet named
+ *  Freedom Money as its successor; Bitcoin Principles and Orange Club Africa
+ *  named none, so they move to the new BLF like every other default. */
+function successorInvite(route: PublicFediFederation): string | null {
+  if (!closingFederation(route.federationId)) return null;
+  return route.slug === "fedi-latnet" ? FREEDOM_MONEY_FEDERATION_INVITE : BLF_V2_FEDERATION_INVITE;
+}
+
 function publicFediWalletServiceChama(route: PublicFediFederation): Community {
+  const successor = successorInvite(route);
   return {
     slug: route.slug,
     displayName: route.name,
     currency: "BTC",
     countries: route.country ? [route.country] : [],
     languages: ["en"],
-    federationInvite: route.invite,
+    federationInvite: successor ?? route.invite,
+    ...(successor ? { historicalFederationInvite: route.invite } : {}),
     flagEmoji: route.flagEmoji,
     country: route.country,
     browserReliable: true,
     notes: `${NATIVE_VERIFIED_NOTE} Public Fedi-approved wallet service.`,
     disambiguator: null,
-    hiddenFromPicker: false,
+    // A closing federation is no longer offered (6.4.35); its slug still
+    // resolves, to its successor for new use and to itself on old listings.
+    hiddenFromPicker: successor !== null,
   };
 }
 
@@ -327,7 +363,10 @@ export const COMMUNITY_REGISTRY: Community[] = [
     currency: "USD",
     countries: ["US"],
     languages: ["en", "es", "fr"],
-    federationInvite: BLF_FEDERATION_INVITE,
+    // 6.4.35: the new BLF. The first BLF closes 2026-12-15; signed
+    // listings stamped "us-blf" before then still mean it (wire invite).
+    federationInvite: BLF_V2_FEDERATION_INVITE,
+    historicalFederationInvite: BLF_FEDERATION_INVITE,
     flagEmoji: "🇺🇸",
     country: "US",
     pickerLabel: "Bitcoin Life Federation",
@@ -349,7 +388,10 @@ export const COMMUNITY_REGISTRY: Community[] = [
     currency: "USD",
     countries: ["US"],
     languages: ["en"],
-    federationInvite: GBF_FEDERATION_INVITE,
+    // GBF closes 2026-12-15 and is going private (Jet, 2026-11-10). Its
+    // people move to the new BLF; its signed listings keep meaning GBF.
+    federationInvite: BLF_V2_FEDERATION_INVITE,
+    historicalFederationInvite: GBF_FEDERATION_INVITE,
     flagEmoji: "🇺🇸",
     country: "US",
     pickerLabel: "Global Bitcoin Federation",
@@ -357,10 +399,8 @@ export const COMMUNITY_REGISTRY: Community[] = [
     browserReliable: true,
     notes: "Native Fedimint sidecar route verified end-to-end against GBF.",
     disambiguator: "GBF",
-    // BLF remains the default US route, but GBF is a first-class alternate
-    // for users who deliberately choose it (matching Kenya's multi-fed
-    // country picker). Old signed GBF trades keep resolving here too.
-    hiddenFromPicker: false,
+    // Hidden from 6.4.35: it now names the same federation as us-blf.
+    hiddenFromPicker: true,
   },
   ...PUBLIC_FEDI_WALLET_SERVICE_CHAMAS,
   SOUTH_AFRICA_GLOBAL_CHAMA,
@@ -370,7 +410,9 @@ export const COMMUNITY_REGISTRY: Community[] = [
     currency: "XOF",
     countries: ["SN"],
     languages: ["fr", "wo"],
-    federationInvite: OCA_FEDERATION_INVITE,
+    federationInvite: BLF_V2_FEDERATION_INVITE,
+    // Orange Club Africa closes 2026-12-15 with no successor (6.4.35).
+    historicalFederationInvite: OCA_FEDERATION_INVITE,
     flagEmoji: "🇸🇳",
     country: "SN",
     browserReliable: true,
@@ -390,7 +432,8 @@ export const COMMUNITY_REGISTRY: Community[] = [
     // across the board; this legacy slug stays hidden but wire-resolvable so
     // old listings carrying community:"global-usd" render on the same backup
     // route as the live us-blf default instead of orphaning onto BP.
-    federationInvite: BLF_FEDERATION_INVITE,
+    federationInvite: BLF_V2_FEDERATION_INVITE,
+    historicalFederationInvite: BLF_FEDERATION_INVITE,
     flagEmoji: "🌎",
     country: null,
     browserReliable: true,
@@ -406,8 +449,10 @@ export const COMMUNITY_REGISTRY: Community[] = [
     countries: ["TZ"],
     languages: ["sw", "en"],
     // Tanzania is user-facing identity first; until a Tanzania-specific
-    // federation is claimed, route to the African regional default (OCA).
-    federationInvite: OCA_FEDERATION_INVITE,
+    // federation is claimed, route to the regional default.
+    federationInvite: BLF_V2_FEDERATION_INVITE,
+    // Orange Club Africa closes 2026-12-15 with no successor (6.4.35).
+    historicalFederationInvite: OCA_FEDERATION_INVITE,
     flagEmoji: "🇹🇿",
     country: "TZ",
     browserReliable: true,
@@ -441,6 +486,16 @@ const BY_SLUG: Map<string, Community> = new Map(
   COMMUNITY_REGISTRY.map(c => [c.slug, c])
 );
 
+/** The federation invite a community slug names ON A SIGNED CREATE. For a
+ *  slug repointed in 6.4.35 that is its original federation, so a trade that
+ *  already exists never changes route and every app version reads the same
+ *  one. New listings stamp `fed` and `mintUrl` explicitly, which win. */
+export function communityWireInvite(slug: string | null | undefined): string | null {
+  const community = getCommunityBySlug(slug);
+  if (!community) return null;
+  return community.historicalFederationInvite ?? community.federationInvite;
+}
+
 /** Look up a community by slug. Walks pre-seeds first, then user-added
  *  custom communities in localStorage. Returns null if the slug is
  *  unknown — callers must handle null (typically by treating the
@@ -468,6 +523,13 @@ export function communityForInvite(invite: string | null | undefined): Community
   if (visible) return visible;
   const anyPreSeed = COMMUNITY_REGISTRY.find(c => c.federationInvite === invite);
   if (anyPreSeed) return anyPreSeed;
+  // 6.4.35: a wallet still on a closing federation belongs to the first
+  // pre-seed (registry order) that used to name it: us-blf, us-gbf, then the
+  // federation's own public route — what 6.4.34 picked for that invite (it
+  // checked pre-seeds before custom communities), never a country shell that
+  // merely defaulted to it.
+  const formerPreSeed = COMMUNITY_REGISTRY.find(c => c.historicalFederationInvite === invite);
+  if (formerPreSeed) return formerPreSeed;
   return getCustomCommunities().find(c => c.federationInvite === invite) ?? null;
 }
 
@@ -529,6 +591,11 @@ export function isRealLocalChama(community: Community): boolean {
  *  (isRealLocalChama, unchanged). The honest split is preserved: "available"
  *  never claims a local Chama, it states the federation route works. */
 export const NATIVE_VERIFIED_FEDERATION_INVITES: ReadonlySet<string> = new Set([
+  // 6.4.35: the v2 federations replace the closing ones as defaults. Same
+  // Fedimint stack; a lock and claim on each still needs a device pass
+  // before this release ships.
+  BLF_V2_FEDERATION_INVITE,
+  FREEDOM_MONEY_FEDERATION_INVITE,
   GBF_FEDERATION_INVITE,
   BLF_FEDERATION_INVITE,
   OCA_FEDERATION_INVITE,
@@ -590,10 +657,26 @@ export function getCustomCommunities(): Community[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isCommunityShape);
+    return parsed.filter(isCommunityShape).map(repointGeneratedShell);
   } catch {
     return [];
   }
+}
+
+/** 6.4.35: a country shell the picker generated and saved on this device
+ *  (resolveCountryCommunitySlug) carries the regional federation of the day
+ *  it was saved. When that federation is closing, read the shell as today's
+ *  regional default, keeping the saved one as its wire invite, exactly like
+ *  the pre-seeded country shells. A community someone added by hand (any
+ *  other slug, or any other invite) is never touched. */
+function repointGeneratedShell(c: Community): Community {
+  if (!c.country || c.historicalFederationInvite || !c.federationInvite) return c;
+  if (c.slug !== `${c.country.toLowerCase()}-${c.currency.toLowerCase()}`) return c;
+  const legacy = legacyFederationForCountry(c.country);
+  if (c.federationInvite !== legacy.invite) return c;
+  const today = defaultFederationForCountry(c.country);
+  if (today.invite === legacy.invite) return c;
+  return { ...c, federationInvite: today.invite, historicalFederationInvite: legacy.invite };
 }
 
 /** Look up a custom (user-added) community by slug. */
@@ -673,7 +756,8 @@ export function claimGeneratedShellCreator(pubkey: string): string[] {
         currency: c.currency,
         country: c.country,
         flagEmoji: c.flagEmoji,
-        federationInvite: c.federationInvite,
+        // Persist the invite as saved; a 6.4.35 repoint is applied on read.
+        federationInvite: c.historicalFederationInvite ?? c.federationInvite,
         browserReliable: c.browserReliable,
         languages: c.languages,
         disambiguator: c.disambiguator,

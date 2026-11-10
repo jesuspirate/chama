@@ -9,7 +9,7 @@
 
 import { nip19 } from "nostr-tools";
 import { getCommunityBySlug } from "../communities/registry.js";
-import { BLF_FEDERATION_INVITE } from "../fedimint/federation-invites.js";
+import { BLF_FEDERATION_INVITE, BLF_V2_FEDERATION_INVITE } from "../fedimint/federation-invites.js";
 import { readVerifiedRoster, resolveRosterAuthority } from "./roster.js";
 import { BONDS_ENFORCED, assignablePool } from "./exposure.js";
 import { pickArbiterFromPool, pickPreferredArbiter } from "../protocol/core/arbiter-pick.js";
@@ -219,7 +219,7 @@ function readOfficialPool(community?: string | null): string[] {
   if (!slug) return [];
   const record = getCommunityBySlug(slug);
   if (!record) return [];
-  if (record.federationInvite === BLF_FEDERATION_INVITE) {
+  if (record.federationInvite === BLF_FEDERATION_INVITE || record.federationInvite === BLF_V2_FEDERATION_INVITE) {
     return BLF_OFFICIAL_ARBITERS;
   }
   // v0.8.0: native-federation communities (future Bitsacco, etc.) still

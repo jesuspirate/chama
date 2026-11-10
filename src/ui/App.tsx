@@ -115,6 +115,7 @@ import {
 } from "../escrow-engine/cbp-recurrence.js";
 import {
   CURATED_PRESETS,
+  effectiveCreateFederationId,
   getActiveInvite,
   getConfiguredNativeBridgeCommunitySlug,
   getNativeBridgeUrl,
@@ -174,6 +175,8 @@ import {
   MAIN_SURFACE_RECOVERY_MIN_SATS,
   hasActiveBuyerSellerCommitment,
   countActiveBuyerSellerCommitments,
+  countActiveBuyerSellerCommitmentsOffFederation,
+  createFederationFacts,
   sumActiveBuyerSellerTradeMsats,
   activeCommittedMsats,
   decideChamaBarLabel,
@@ -807,12 +810,20 @@ export default function App() {
         const storageError = browserWalletStorageError();
         if (storageError) throw new Error(storageError);
       }
+      const tradeFacts = createFederationFacts(trade);
       const effect = decideListingTapEffect({
-        listing: { mintUrl: trade.mintUrl, community: trade.community,
-          fedId: (trade.eventChain[0]?.payload as { fed?: string } | undefined)?.fed ?? null },
+        listing: { mintUrl: trade.mintUrl, community: trade.community, fedId: tradeFacts.fed },
         currentInvite: liveActiveInvite,
         balanceMsats: preservesArbiterFederationBalances ? 0 : (fedimint.balanceMsats ?? 0),
         activeCommitmentCount,
+        // 6.4.35: going TO this trade's federation strands nothing there; only
+        // live trades on other federations block (v4.1 D). After the move to
+        // the v2 federations a person's open trades stay on the old ones, and
+        // funding or claiming them must still reach them.
+        activeCommitmentCountElsewhere: pubkey
+          ? countActiveBuyerSellerCommitmentsOffFederation({ escrows: myTrades, userPubkey: pubkey, nowSec: now,
+            federationId: effectiveCreateFederationId(tradeFacts) })
+          : activeCommitmentCount,
         acceptsUnlistedFederation: purpose === "claim" ? () => true : acceptsUnlistedFederation,
       });
       if (effect.kind === "blocked-active-commitment") throw new Error(t("app.listingOtherChama"));

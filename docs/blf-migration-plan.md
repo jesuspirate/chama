@@ -1,8 +1,8 @@
 # BLF federation migration plan
 
-Status: proposed, 2026-11-05. This change updates the landing page invite and
-QR only. It does not switch Chama wallets, change application defaults, move
-sats, or deploy the landing page.
+Status: proposed, 2026-11-05 (#115: landing page invite and QR only).
+2026-11-10 update: the app change is in "Moving to the v2 federations" at the
+end of this file.
 
 ## Identity and scope
 
@@ -100,3 +100,52 @@ gate. Record local, CI and device evidence separately. Roll out the new route
 to fresh wallets first, then offer existing users an explicit transition with
 old-wallet access. Rollback restores defaults while retaining both wallets
 and routes. Merging, deployment and app release require a release instruction.
+
+## Moving to the v2 federations (2026-11-10)
+
+Jet confirmed the new BLF invite above in Fedi, and reported the shutdown
+notices each federation shows in Fedi. All of these close on 2026-12-15:
+
+| Federation | ID | Successor named in Fedi | Chama routes its people to |
+|---|---|---|---|
+| Bitcoin Life Federation (first) | `888b70ec…` | the new BLF | new BLF |
+| Global Bitcoin Federation | `1bcb64e6…` | none (going private) | new BLF |
+| Bitcoin Principles | `b21068c8…` | none | new BLF |
+| Orange Club Africa | `718e421b…` | none | new BLF |
+| LatNet | `7c1edc0c…` | Freedom Money `63bfb99b…` | Freedom Money |
+
+Liberty Tree (closing 2026-12-04) is a test federation and is not in the app.
+Afribit Kibera and Bitsacco have announced nothing and are unchanged. The
+other public Fedi routes (Victoria BTC, Marigold, E-Cash Club, Bitcoinomad,
+BTC Brasil, Freedom One) are unchanged until their status is known.
+
+What the app does (one release, Jet's decision 2026-11-10):
+
+- **New use goes to the v2 routes.** Every community whose federation is
+  closing now points at its successor (`federationInvite`), and keeps the
+  closing federation as `historicalFederationInvite`. The universal fallback
+  is the new BLF. Pickers offer no closing federation.
+- **Signed trades never move.** `effectiveCreateFederationId` and listing
+  resolution read a community slug through `communityWireInvite`, which
+  returns the historical invite. An unstamped `us-blf` listing still means the
+  first BLF, as it does on 6.4.34, so two versions never disagree about where
+  a trade's sats are. New listings stamp `fed` and `mintUrl`, which win.
+- **No new sats on a closing federation.** Creating a listing while the
+  wallet is on one is refused (no sats move at create). `preflightLock` refuses
+  new funding on a trade or wallet on one, before any invoice, spend or Fedi
+  generate. After sats have moved (a paid invoice, a resumed lock), the lock
+  goes ahead so the sats reach escrow and settle rather than sit in a wallet.
+- **People move with their community.** On next start, a person whose home
+  community now points elsewhere goes through the existing reconcile guard: an
+  empty wallet switches; a balance, or an unknown one, stops and asks, and the
+  old wallet is kept. Country shells the picker saved on a device are read the
+  same way; a community someone added by hand is never repointed.
+- **Every place sats sit says until when.** Home and Me show "This federation
+  closes on 15 December 2026. Send these sats out before then." beside a
+  balance or kept wallet on a closing federation (en, es, fr, sw).
+
+Not in this change: an in-app transfer of balances between federations, a
+notice inside an open trade on a closing federation, and anything for sats
+still locked on the old BLF in the Sep 17 / Oct 3 trades that could not be
+loaded (see project notes). Older app versions show a new-BLF listing as "not
+on Chama's list" and ask before joining; they route it correctly by its `fed`.

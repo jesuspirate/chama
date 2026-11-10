@@ -266,4 +266,5 @@ export const app: Record<string, string> = {
   "app.listingExpired": "That listing expired before anyone locked — nothing was ever funded.",
   "app.openingTrade": "Opening trade\u2026",
   "app.tradeOpenFailed": "Couldn't open that trade \u2014 the relays didn't return it. Try again in a moment.",
+  "app.federationClosingCreate": "Your wallet is on a federation that closes on {date}. Choose your community again to move to its new federation, then post.",
 };

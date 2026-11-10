@@ -278,4 +278,5 @@ export const fund: Record<string, string> = {
   "fund.summaryInsurance": "Arbiter insurance",
   "fund.summaryTotal": "Total to pay",
   "fund.summaryLeft": "Left in your wallet",
+  "fund.federationClosing": "This trade's federation closes on {date}, so Chama no longer puts new sats on it. Ask for it to be posted again on the new federation. No sats were spent.",
 };
