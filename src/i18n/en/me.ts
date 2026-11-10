@@ -365,4 +365,5 @@ export const me: Record<string, string> = {
   "me.groupGettingPaid": "Where you get paid",
   "backup.rowTitle": "Your key",
   "backup.rowHint": "Sign in on another device with it",
+  "me.federationClosesOn": "This federation closes on {date}. Send these sats out before then.",
 };

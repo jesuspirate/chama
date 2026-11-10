@@ -284,4 +284,5 @@ export const fund: Record<string, string> = {
   "fund.summaryInsurance": "Assurance de l’arbitre",
   "fund.summaryTotal": "Total à payer",
   "fund.summaryLeft": "Reste dans votre portefeuille",
+  "fund.federationClosing": "La fédération de cet échange ferme le {date} : Chama n'y place plus de nouveaux sats. Demandez qu'il soit republié sur la nouvelle fédération. Aucun sat n'a été dépensé.",
 };

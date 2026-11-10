@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { type FedimintState } from "../../hooks/useEscrow.js";
 import {
-  CURATED_PRESETS,
-  BP_FEDERATION_INVITE,
+  PICKABLE_PRESETS,
+  BLF_V2_FEDERATION_INVITE,
 } from "../../fedimint/federation-config.js";
 import { T, inputStyle } from "../theme.js";
 import { useT } from "../../i18n/index.js";
@@ -23,8 +23,9 @@ export function SwitchFederationPanel({
   onSwitch: (inviteCode: string, opts?: { force?: boolean }) => Promise<void>;
 }) {
   const { t } = useT();
-  const presets = CURATED_PRESETS;
-  const [selectedInvite, setSelectedInvite] = useState<string>(BP_FEDERATION_INVITE);
+  // 6.4.35: federations closing down are not offered; a pasted invite still is.
+  const presets = PICKABLE_PRESETS;
+  const [selectedInvite, setSelectedInvite] = useState<string>(BLF_V2_FEDERATION_INVITE);
   const [customInvite, setCustomInvite] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);

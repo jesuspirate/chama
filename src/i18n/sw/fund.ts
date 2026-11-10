@@ -272,4 +272,5 @@ export const fund: Record<string, string> = {
   "fund.summaryInsurance": "Bima ya msuluhishi",
   "fund.summaryTotal": "Jumla ya kulipa",
   "fund.summaryLeft": "Inabaki kwenye pochi yako",
+  "fund.federationClosing": "Shirikisho la biashara hii linafungwa tarehe {date}, kwa hiyo Chama haiweki tena sats mpya humo. Omba ichapishwe upya kwenye shirikisho jipya. Hakuna sats zilizotumika.",
 };

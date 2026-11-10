@@ -356,4 +356,5 @@ export const me: Record<string, string> = {
   "me.groupGettingPaid": "Dónde te pagan",
   "backup.rowTitle": "Tu clave",
   "backup.rowHint": "Úsala para entrar en otro dispositivo",
+  "me.federationClosesOn": "Esta federación cierra el {date}. Saca estos sats antes de esa fecha.",
 };

@@ -244,4 +244,5 @@ export const app: Record<string, string> = {
   "app.listingExpired": "Tangazo hilo liliisha muda kabla mtu hajafunga — hakuna kilichowahi kufadhiliwa.",
   "app.openingTrade": "Inafungua biashara\u2026",
   "app.tradeOpenFailed": "Imeshindwa kufungua biashara hiyo \u2014 relays hazikuirudisha. Jaribu tena baada ya muda mfupi.",
+  "app.federationClosingCreate": "Pochi yako iko kwenye shirikisho linalofungwa tarehe {date}. Chagua jumuiya yako tena ili uhamie shirikisho lake jipya, kisha uchapishe.",
 };

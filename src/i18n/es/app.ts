@@ -246,4 +246,5 @@ export const app: Record<string, string> = {
   "app.listingExpired": "Esa oferta expiró antes de que alguien bloqueara — nunca se fondeó nada.",
   "app.openingTrade": "Abriendo operaci\u00f3n\u2026",
   "app.tradeOpenFailed": "No se pudo abrir esa operaci\u00f3n: los relays no la devolvieron. Int\u00e9ntalo de nuevo en un momento.",
+  "app.federationClosingCreate": "Tu billetera está en una federación que cierra el {date}. Elige de nuevo tu comunidad para pasar a su nueva federación y luego publica.",
 };

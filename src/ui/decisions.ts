@@ -17,11 +17,13 @@ import { NEVER_EXPIRES } from "../escrow-engine/types.js";
 import {
   getCommunityBySlug,
   communityForInvite,
+  communityWireInvite,
   COMMUNITY_REGISTRY,
   DEFAULT_COMMUNITY_SLUG,
 } from "../communities/registry.js";
 import {
   BP_FEDERATION_INVITE,
+  BLF_V2_FEDERATION_INVITE,
   CURATED_PRESETS,
   effectiveCreateFederationId,
   expectedFederationIdForInvite,
@@ -146,7 +148,8 @@ export function decideCommunityTapEffect(inputs: CommunityTapInputs): CommunityT
   const community = getCommunityBySlug(inputs.slug);
   // Community-tap honors the community's pinned invite (or BP fallback).
   // We bypass any custom-invite override on purpose.
-  const targetInvite = community?.federationInvite ?? BP_FEDERATION_INVITE;
+  // 6.4.35: Bitcoin Principles closes 2026-12-15; the fallback is the new BLF.
+  const targetInvite = community?.federationInvite ?? BLF_V2_FEDERATION_INVITE;
   const displayName = community?.displayName ?? inputs.slug;
 
   // Already on the right fed — pure identity update, no client work.
@@ -275,7 +278,7 @@ export function decideAutoInitTarget(inputs: AutoInitInputs): AutoInitTarget {
     // any pasted-custom-invite override the user might have set in
     // Sandbox. Sticky-community is intentionally rigid: refresh =
     // come home.
-    const homeInvite = community?.federationInvite ?? BP_FEDERATION_INVITE;
+    const homeInvite = community?.federationInvite ?? BLF_V2_FEDERATION_INVITE;
     return { kind: "use-home", invite: homeInvite, slug: inputs.homeCommunity };
   }
 
@@ -288,7 +291,7 @@ export function decideAutoInitTarget(inputs: AutoInitInputs): AutoInitTarget {
     : DEFAULT_COMMUNITY_SLUG;
   if (inferredCommunity) {
     const defaultCommunity = getCommunityBySlug(inferredCommunity);
-    const defaultInvite = defaultCommunity?.federationInvite ?? BP_FEDERATION_INVITE;
+    const defaultInvite = defaultCommunity?.federationInvite ?? BLF_V2_FEDERATION_INVITE;
     return {
       kind: "use-default",
       invite: defaultInvite,
@@ -1668,9 +1671,11 @@ function resolveListingInvite(listing: {
     return listing.mintUrl;
   }
   if (listing.community) {
-    const c = getCommunityBySlug(listing.community);
-    if (c?.federationInvite) return c.federationInvite;
+    // A listing's community names the federation it meant when signed.
+    const wire = communityWireInvite(listing.community);
+    if (wire) return wire;
   }
+  // A listing naming no federation at all predates the BLF default: BP.
   return BP_FEDERATION_INVITE;
 }
 
@@ -1718,7 +1723,9 @@ export function resolveCreateMintUrl(inputs: {
   if (inputs.activeInvite?.startsWith("fed1")) {
     return inputs.activeInvite;
   }
-  return resolveListingInvite({ mintUrl: "", community: inputs.community });
+  // A NEW listing goes where the community points today, never to the
+  // federation its slug meant on older listings (6.4.35 repoint).
+  return getCommunityBySlug(inputs.community)?.federationInvite ?? BLF_V2_FEDERATION_INVITE;
 }
 
 /** Where a refused federation change goes (App's queueDestroyConfirm).
@@ -1825,7 +1832,7 @@ export interface DetailFramingInputs {
 
 export function decideTradeDetailFraming(inputs: DetailFramingInputs): DetailFraming {
   const homeCom = inputs.homeCommunity ? getCommunityBySlug(inputs.homeCommunity) : null;
-  const homeFedInvite = homeCom?.federationInvite ?? BP_FEDERATION_INVITE;
+  const homeFedInvite = homeCom?.federationInvite ?? BLF_V2_FEDERATION_INVITE;
   const sameFed = inputs.listingMintUrl === homeFedInvite;
 
   if (sameFed) {

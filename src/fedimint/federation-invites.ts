@@ -49,19 +49,50 @@ export const BITSACCO_FEDERATION_INVITE =
 export const BITSACCO_FEDERATION_ID: string | null = null;
 
 /**
- * Bitcoin Life Federation — an explicit federation option, NOT the
+ * Bitcoin Life Federation, the FIRST one (888b70ec…). It closes on
+ * 2026-12-15 (see CLOSING_FEDERATIONS) and is kept only so trades and
+ * wallets already on it keep resolving and settling. New trades use
+ * BLF_V2_FEDERATION_* below. Historical note: an explicit federation option, NOT the
  * universal fallback. Iroh-only transport: now reliable from browsers
  * after the v0.5.0 canary iroh-relay 0.90 bump (see registry entry's
  * `browserReliable: true`). Selecting BLF in the registry or via a
  * pasted invite is intentional, not ambient.
  */
-export const BLF_FEDERATION_NAME = "Bitcoin Life Federation";
+export const BLF_FEDERATION_NAME = "Bitcoin Life Federation (previous)";
 
 export const BLF_FEDERATION_INVITE =
   "fed11qgqyj3mfwfhksw309ajrwvmxvenxgvpkvyursenxxvur2c3sv4jkxdfcxf3kgdmyvs6nzcehvc6xzctzxumrxdmr89jnwdtpv5enqwtpxqmrsvfh89skxv34qqqjpzytwrkr28r8mjas4ej467utd7excr7fapj7ukgc4ugacm6nu2u73k7ram";
 
 export const BLF_FEDERATION_ID =
   "888b70ec351c67dcbb0ae655d7b8b6fb26c0fc9e865ee5918af11dc6f53e2b9e";
+
+/**
+ * Bitcoin Life Federation, the new one (30a2771d…), run by independent
+ * guardians. Jet confirmed this invite in Fedi on 2026-11-10; it is the same
+ * invite the landing page QR has carried since #115. Every route that used
+ * the first BLF, GBF, Bitcoin Principles or Orange Club Africa as a default
+ * now points here. Its own federation, never the same wallet as the first
+ * BLF: the two share a name, not notes.
+ */
+export const BLF_V2_FEDERATION_NAME = "Bitcoin Life Federation";
+
+export const BLF_V2_FEDERATION_INVITE =
+  "fed11qgqyj3mfwfhksw309ajngvf4v5ur2ef5xdnxve3ex93nqdtxxe3nwcenxp3rjv3nx56kzvfnvsurzwrzvc6rye3cvycnyvpcxa3x2wtyv33nzefexquxgvekqqqjqv9zwuwj93u6f5ytmfhag6wm8mettphm77ykg7apvyt34x58wy50rk9sj8";
+
+export const BLF_V2_FEDERATION_ID =
+  "30a2771d22c79a4d08bda6fd469db3ef2b586fbf789647ba161171a9a877128f";
+
+/**
+ * Freedom Money — LatNet's successor, named in Fedi's LatNet closing notice
+ * (seen by Jet 2026-11-10). The Latin American default from this release.
+ */
+export const FREEDOM_MONEY_FEDERATION_NAME = "Freedom Money";
+
+export const FREEDOM_MONEY_FEDERATION_INVITE =
+  "fed11qvqyj3mfwfhksw309anxzve3x3snvd3cxumnge3cvsunsvecx33rxwrxxyukydfnvenx2cecvy6kvwpexu6rjwryvg6rgef3xsexvde4xccnqvrpvgerwcn9pqqyj3mfwfhksw309u6rvdp3vvur2decxajngwpjx3jkvwp4xqunqvrxx5cn2denvcmkywrzvs6rqwr9vcerxctyvejrzepcvgmn2drzx9nxgd35xenrqvp4qyqjqcalhxd5xvhwsdlax5dxz97kutp0p46hgyy5z98yu0uy9zynhtsyug7a3f";
+
+export const FREEDOM_MONEY_FEDERATION_ID =
+  "63bfb99b4332ee837fd351a6117d6e2c2f0d75741094114e4e3f8428893bae04";
 
 /**
  * GBF / Global Bitcoin Federation — Fedi-approved public wallet service used
@@ -100,6 +131,14 @@ export const PUBLIC_FEDI_APPROVED_FEDERATIONS: PublicFediFederation[] = [
     federationId: "6b2bcd96ab83d6ba31e36b821c89f6cc7a57d2133cdf884018833d3770456fe6",
     invite: "fed11qgqyj3mfwfhksw309umrqvfjxd3nqvm9xsmrgcnrxvurjepsxcmnxwrrxg6nsc348yekvvf3xcunsvrxxvunvwfnvsuxxvmrvd3xxdpcx5uxzvfhvsunyvnrqqqjq6etekt2hq7khgc7x6uzrjyldnr62lfpx0xl3pqp3qeaxacy2mlxvv75v3",
     flagEmoji: "🌐",
+    country: null,
+  },
+  {
+    slug: "fedi-freedom-money",
+    name: FREEDOM_MONEY_FEDERATION_NAME,
+    federationId: FREEDOM_MONEY_FEDERATION_ID,
+    invite: FREEDOM_MONEY_FEDERATION_INVITE,
+    flagEmoji: "🌎",
     country: null,
   },
   {
@@ -168,11 +207,11 @@ export const PUBLIC_FEDI_APPROVED_FEDERATIONS: PublicFediFederation[] = [
   },
 ];
 
-// Regional default federations (v2.6). Countries WITHOUT a real local Chama
-// route to a sensible regional fed instead of all funneling onto BLF:
-//   Africa → Orange Club Africa, Latin America → LatNet, everywhere else → BLF.
-// Pulled by slug from the approved list above so the long invite string lives
-// in exactly one place.
+// Regional federations as of 6.4.34 (v2.6): Africa → Orange Club Africa,
+// Latin America → LatNet. Both close on 2026-12-15; they stay named here so
+// trades and country communities created on them keep resolving. Pulled by
+// slug from the approved list above so the long invite string lives in
+// exactly one place.
 export const OCA_FEDERATION_NAME = "Orange Club Africa";
 export const OCA_FEDERATION_INVITE =
   PUBLIC_FEDI_APPROVED_FEDERATIONS.find((f) => f.slug === "fedi-orange-club-africa")!.invite;
@@ -180,3 +219,34 @@ export const OCA_FEDERATION_INVITE =
 export const LATNET_FEDERATION_NAME = "LatNet";
 export const LATNET_FEDERATION_INVITE =
   PUBLIC_FEDI_APPROVED_FEDERATIONS.find((f) => f.slug === "fedi-latnet")!.invite;
+
+/**
+ * Federations whose guardians announced a shutdown. Chama keeps reading,
+ * settling and claiming trades on them, and keeps every wallet on them, but
+ * puts no NEW sats there: no new listing is created on one and no lock is
+ * funded on one (both refused before any sats move). Home names the date
+ * beside any sats still held there.
+ *
+ * Dates come from each federation's own notice in Fedi (Jet, 2026-11-10).
+ * Liberty Tree (closing 2026-12-04) is a test federation Chama never ships.
+ */
+export interface ClosingFederation {
+  federationId: string;
+  /** Last day, YYYY-MM-DD, as the federation announced it. */
+  closesOn: string;
+}
+
+export const CLOSING_FEDERATIONS: readonly ClosingFederation[] = [
+  { federationId: BLF_FEDERATION_ID, closesOn: "2026-12-15" },
+  { federationId: GBF_FEDERATION_ID, closesOn: "2026-12-15" },
+  { federationId: BP_FEDERATION_ID, closesOn: "2026-12-15" },
+  { federationId: PUBLIC_FEDI_APPROVED_FEDERATIONS.find((f) => f.slug === "fedi-orange-club-africa")!.federationId, closesOn: "2026-12-15" },
+  { federationId: PUBLIC_FEDI_APPROVED_FEDERATIONS.find((f) => f.slug === "fedi-latnet")!.federationId, closesOn: "2026-12-15" },
+];
+
+/** The shutdown notice for a federation ID, or null if none is known. */
+export function closingFederation(federationId: string | null | undefined): ClosingFederation | null {
+  const normalized = federationId?.trim().toLowerCase();
+  if (!normalized) return null;
+  return CLOSING_FEDERATIONS.find((f) => f.federationId === normalized) ?? null;
+}

@@ -100,7 +100,7 @@ import type { TradeIndexEntry } from "../../escrow-engine/trade-index.js";
 import { readKind0Toggle, writeKind0Toggle, readLocalTradeName, writeLocalTradeName, sanitizeTradeName, generatedNameFor, profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { backgroundPushEnabled, enableBackgroundPush, disableBackgroundPush } from "../../notifications/watch-tags.js";
 import { isWebPushSupported, iosNeedsInstallForPush } from "../../notifications/web-push-client.js";
-import { expectedFederationIdForInvite, federationNameForInvite } from "../../fedimint/federation-config.js";
+import { closingDateLabel, closingFederationForInvite, expectedFederationIdForInvite, federationNameForInvite } from "../../fedimint/federation-config.js";
 import { publishedFederationName } from "../../fedimint/federation-inspection.js";
 import { useFederationInfo } from "../components/FederationDisclosure.js";
 import { listArbiterFederationRoutes } from "../../fedimint/arbiter-federation-store.js";
@@ -3034,7 +3034,18 @@ function NostrNamesRow({ on, onToggle }: {
 
 export function WalletBalance({ balanceMsats, known = true, invite }: { balanceMsats: number; known?: boolean; invite?: string }) {
   const { t } = useT();
-  return <div data-wallet-balance style={{ padding: 16, color: T.text, fontFamily: T.sans }}>{t("me.walletBalance")} {known ? <TradeAmount msats={balanceMsats} interactive /> : "—"}<EcashCustody key={invite} invite={invite} /></div>;
+  return <div data-wallet-balance style={{ padding: 16, color: T.text, fontFamily: T.sans }}>{t("me.walletBalance")} {known ? <TradeAmount msats={balanceMsats} interactive /> : "—"}<EcashCustody key={invite} invite={invite} /><FederationClosingNote invite={invite} /></div>;
+}
+
+/** 6.4.35: beside any sats on a federation that announced its shutdown, the
+ *  date they must leave by (every place sats sit says until when). */
+export function FederationClosingNote({ invite }: { invite?: string }) {
+  const { t, lang } = useT();
+  const closing = closingFederationForInvite(invite);
+  if (!closing) return null;
+  return <div data-federation-closing style={{ marginTop: 6, fontSize: T.fs.secondary, fontWeight: 600, color: T.amber, lineHeight: 1.45 }}>
+    {t("me.federationClosesOn", { date: closingDateLabel(closing.closesOn, lang) })}
+  </div>;
 }
 
 /** H4: the wallets ParkedWallets lists, which Home shows. A wallet whose
@@ -3061,6 +3072,7 @@ export function ParkedWallets({ pubkey, activeInvite }: { pubkey: string | null 
       {parked.map((route) => (
         <div key={route.federationId} style={{ fontSize: T.fs.body, lineHeight: 1.45, marginBottom: 4 }}>
           <ParkedWalletLine sats={route.lastBalanceMsats === undefined ? null : Math.floor(route.lastBalanceMsats / 1000)} invite={route.inviteCode} />
+          <FederationClosingNote invite={route.inviteCode} />
         </div>
       ))}
       <div style={{ fontSize: T.fs.secondary, color: T.ink2, lineHeight: 1.4, marginTop: 4 }}>{t("me.parkedWalletsHint")}</div>

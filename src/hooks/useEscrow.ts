@@ -305,6 +305,8 @@ import {
   shouldReconcileFederation,
   federationNameForInvite,
   deriveCreateFedTags,
+  closingFederation,
+  closingDateLabel,
   effectiveCreateFederationId,
   expectedFederationIdForInvite,
   arbiterFederationStorageScope,
@@ -2482,6 +2484,19 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // `fed` from cachedFedId alone and omits `fedPrefix`.
     const cachedFedId = fedimintRef.current?.getFederationId() ?? null;
     const fedTags = deriveCreateFedTags({ cachedFedId, probeResult: null });
+    // 6.4.35: no new listing on a federation that announced its shutdown.
+    // Create moves no sats; refusing here keeps a lock from ever being asked
+    // for on it. On-chain escrow doesn't use a federation.
+    const closing = (params as { escrowMode?: string }).escrowMode === "onchain" || isSimModeOn()
+      ? null
+      : closingFederation(cachedFedId);
+    if (closing) {
+      const lang = getCurrentLang();
+      const err: any = new Error(translate(lang, "app.federationClosingCreate", { date: closingDateLabel(closing.closesOn, lang) }));
+      err.code = "FEDERATION_CLOSING";
+      err.closesOn = closing.closesOn;
+      throw err;
+    }
 
     // Sandbox/test lever: override the default trade expiry for CREATEs made
     // on THIS device. Consensus-safe by construction — expirySeconds becomes
@@ -5562,7 +5577,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       if (!isSimModeOn()) assertPaidLockRecoveryWritable();
       if (opts.fundingMethod === "onchain") assertOnchainFundingWindow(requireClient().getState(escrowId)!);
     } catch (e) {
-      const err = errorText(e, "This trade is not ready to fund");
+      const closingCode = (e as { code?: string; closesOn?: string } | null);
+      const err = closingCode?.code === "FEDERATION_CLOSING" && closingCode.closesOn
+        ? translate(getCurrentLang(), "fund.federationClosing", { date: closingDateLabel(closingCode.closesOn, getCurrentLang()) })
+        : errorText(e, "This trade is not ready to fund");
       opts.onPhase({ kind: "lock-failed", error: err });
       return { kind: "lock-failed", error: err };
     }

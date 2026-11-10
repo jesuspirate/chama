@@ -351,4 +351,5 @@ export const me: Record<string, string> = {
   "me.groupGettingPaid": "Mahali unapolipwa",
   "backup.rowTitle": "Ufunguo wako",
   "backup.rowHint": "Utumie kuingia kwenye kifaa kingine",
+  "me.federationClosesOn": "Shirikisho hili linafungwa tarehe {date}. Toa sats hizi kabla ya tarehe hiyo.",
 };

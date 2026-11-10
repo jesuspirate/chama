@@ -248,4 +248,5 @@ export const app: Record<string, string> = {
   "app.listingExpired": "Cette annonce a expiré avant tout verrouillage — rien n'a jamais été financé.",
   "app.openingTrade": "Ouverture de l'\u00e9change\u2026",
   "app.tradeOpenFailed": "Impossible d'ouvrir cet \u00e9change \u2014 les relais ne l'ont pas renvoy\u00e9. R\u00e9essayez dans un instant.",
+  "app.federationClosingCreate": "Votre portefeuille est sur une fédération qui ferme le {date}. Choisissez à nouveau votre communauté pour passer à sa nouvelle fédération, puis publiez.",
 };

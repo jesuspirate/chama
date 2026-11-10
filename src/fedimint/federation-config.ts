@@ -33,10 +33,19 @@ import {
   BLF_FEDERATION_NAME,
   BLF_FEDERATION_INVITE,
   BLF_FEDERATION_ID,
+  BLF_V2_FEDERATION_NAME,
+  BLF_V2_FEDERATION_INVITE,
+  BLF_V2_FEDERATION_ID,
+  FREEDOM_MONEY_FEDERATION_NAME,
+  FREEDOM_MONEY_FEDERATION_INVITE,
+  FREEDOM_MONEY_FEDERATION_ID,
+  CLOSING_FEDERATIONS,
+  closingFederation,
   GBF_FEDERATION_NAME,
   GBF_FEDERATION_INVITE,
   GBF_FEDERATION_ID,
   PUBLIC_FEDI_APPROVED_FEDERATIONS,
+  type ClosingFederation,
 } from "./federation-invites.js";
 import {
   getScopedStorageItem,
@@ -57,11 +66,20 @@ export {
   BLF_FEDERATION_NAME,
   BLF_FEDERATION_INVITE,
   BLF_FEDERATION_ID,
+  BLF_V2_FEDERATION_NAME,
+  BLF_V2_FEDERATION_INVITE,
+  BLF_V2_FEDERATION_ID,
+  FREEDOM_MONEY_FEDERATION_NAME,
+  FREEDOM_MONEY_FEDERATION_INVITE,
+  FREEDOM_MONEY_FEDERATION_ID,
+  CLOSING_FEDERATIONS,
+  closingFederation,
   GBF_FEDERATION_NAME,
   GBF_FEDERATION_INVITE,
   GBF_FEDERATION_ID,
   PUBLIC_FEDI_APPROVED_FEDERATIONS,
 };
+export type { ClosingFederation };
 
 /**
  * localStorage key for a user-supplied custom invite code.
@@ -85,7 +103,8 @@ export function getFederationInvite(): string {
   } catch {
     // localStorage unavailable (SSR, etc.) — fall through to default
   }
-  return BLF_FEDERATION_INVITE;
+  // 6.4.35: the new BLF. The first BLF closes on 2026-12-15.
+  return BLF_V2_FEDERATION_INVITE;
 }
 
 /**
@@ -171,6 +190,8 @@ export function expectedFederationIdForInvite(invite: string | null | undefined)
   if (trimmed === AFRIBIT_KIBERA_FEDERATION_INVITE) return AFRIBIT_KIBERA_FEDERATION_ID;
   if (trimmed === BITSACCO_FEDERATION_INVITE) return BITSACCO_FEDERATION_ID;
   if (trimmed === BLF_FEDERATION_INVITE) return BLF_FEDERATION_ID;
+  if (trimmed === BLF_V2_FEDERATION_INVITE) return BLF_V2_FEDERATION_ID;
+  if (trimmed === FREEDOM_MONEY_FEDERATION_INVITE) return FREEDOM_MONEY_FEDERATION_ID;
   if (trimmed === GBF_FEDERATION_INVITE) return GBF_FEDERATION_ID;
   const publicFedi = PUBLIC_FEDI_APPROVED_FEDERATIONS.find((route) => route.invite === trimmed);
   if (publicFedi) return publicFedi.federationId;
@@ -199,7 +220,10 @@ export function effectiveCreateFederationId(inputs: {
 } | null | undefined): string | undefined {
   const stampedFed = normalizeFederationId(inputs?.fed);
   const mintFed = normalizeFederationId(expectedFederationIdForInvite(inputs?.mintUrl));
-  const communityInvite = getCommunityBySlug(inputs?.community)?.federationInvite ?? null;
+  // A slug repointed to a new federation (6.4.35) still means its ORIGINAL
+  // federation when read off a signed CREATE: the repoint must not move a
+  // trade that already exists, and an older client still reads the original.
+  const communityInvite = communityWireInvite(inputs?.community);
   const communityFed = normalizeFederationId(expectedFederationIdForInvite(communityInvite));
 
   if (stampedFed) {
@@ -269,7 +293,7 @@ export function shouldReconcileFederation(inputs: {
 //   2. User's pasted custom invite (manual override only without a pinned community)
 //   3. BLF fallback
 //
-import { getCommunityBySlug } from "../communities/registry.js";
+import { communityWireInvite, getCommunityBySlug } from "../communities/registry.js";
 
 /**
  * Resolve the federation invite code for a given community slug.
@@ -306,8 +330,9 @@ export function resolveFederationForCommunity(slug: string | null | undefined): 
   // 3. BLF fallback. The universal backup federation across the board
   //    (DECISION 2026-06-16). BLF is browser-reliable since the v0.5.0
   //    canary iroh bump, so it is the one default everywhere — community
-  //    null/unknown, or its federationInvite is null.
-  return BLF_FEDERATION_INVITE;
+  //    null/unknown, or its federationInvite is null. 6.4.35: the new
+  //    BLF; the first BLF closes on 2026-12-15.
+  return BLF_V2_FEDERATION_INVITE;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -343,6 +368,9 @@ export interface FederationPreset {
   communityUrl?: string;
   /** Optional country / locality tag */
   region?: string;
+  /** Set when the federation announced a shutdown (CLOSING_FEDERATIONS).
+   *  Kept so trades and wallets on it still resolve; hidden from pickers. */
+  closesOn?: string;
 }
 
 /**
@@ -353,19 +381,26 @@ export interface FederationPreset {
  * src/communities/registry.ts; v1.5 will publish kind:38112 community
  * claims to Nostr for cross-client discovery).
  */
-export const CURATED_PRESETS: FederationPreset[] = [
+const CURATED_PRESETS_UNMARKED: FederationPreset[] = [
+  {
+    name: BLF_V2_FEDERATION_NAME,
+    federationId: BLF_V2_FEDERATION_ID,
+    inviteCode: BLF_V2_FEDERATION_INVITE,
+    description: "Chama's default federation, run by independent guardians.",
+    source: "curated",
+  },
   {
     name: BP_FEDERATION_NAME,
     federationId: BP_FEDERATION_ID,
     inviteCode: BP_FEDERATION_INVITE,
-    description: "Browser-friendly default. Safe starting point.",
+    description: "Closes on 15 December 2026.",
     source: "curated",
   },
   {
     name: BLF_FEDERATION_NAME,
     federationId: BLF_FEDERATION_ID,
     inviteCode: BLF_FEDERATION_INVITE,
-    description: "Best on the mobile app — limited browser support today.",
+    description: "The first Bitcoin Life Federation. Closes on 15 December 2026.",
     source: "curated",
   },
   {
@@ -401,6 +436,33 @@ export const CURATED_PRESETS: FederationPreset[] = [
       region: route.country ?? undefined,
     })),
 ];
+
+/** Every curated federation, including the ones closing down (marked with
+ *  `closesOn`): routing and naming must still know them. */
+export const CURATED_PRESETS: FederationPreset[] = CURATED_PRESETS_UNMARKED.map((preset) => {
+  const closing = closingFederation(preset.federationId);
+  return closing ? { ...preset, closesOn: closing.closesOn } : preset;
+});
+
+/** The federations a person may pick for NEW use: closing ones are left out. */
+export const PICKABLE_PRESETS: FederationPreset[] = CURATED_PRESETS.filter((preset) => !preset.closesOn);
+
+/** A closing date (YYYY-MM-DD) as people read it in their language,
+ *  e.g. "15 December 2026". The date is the federation's own, so UTC. */
+export function closingDateLabel(closesOn: string, lang: string): string {
+  const date = new Date(`${closesOn}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return closesOn;
+  try {
+    return date.toLocaleDateString(lang, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  } catch {
+    return closesOn;
+  }
+}
+
+/** The shutdown notice for the federation an invite joins, or null. */
+export function closingFederationForInvite(invite: string | null | undefined): ClosingFederation | null {
+  return closingFederation(expectedFederationIdForInvite(invite));
+}
 
 export function federationNameForInvite(invite: string | null | undefined): string | null {
   const trimmed = invite?.trim();
