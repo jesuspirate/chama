@@ -55,7 +55,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Version guard (tag == package.json == tauri.conf source)
         if: startsWith(github.ref, 'refs/tags/v')
@@ -161,7 +161,7 @@ jobs:
           cargo --version
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       # `tauri build` runs beforeBuildCommand (sidecar cargo build + vite
       # build) itself, then bundles with the version read from package.json.
