@@ -41,8 +41,13 @@ jobs:
           node-version: 22.23.4
           cache: npm
 
+      # SECURITY: `npm ci` installs exactly what package-lock.json records
+      # (versions + integrity hashes) and fails if the lockfile and
+      # package.json disagree. `npm install` would quietly re-resolve and
+      # rewrite the lock instead, so a drifted or tampered manifest could
+      # pull code that was never reviewed.
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       # Denylist check (crypto-js / plain-crypto-js / axios must never
       # appear) + npm audit gate on production deps at high/critical.
