@@ -27,7 +27,7 @@ logging "to debug" — the diagnosable unit is counts (`/health`), never tags or
 
 1. **Copy the dir to the VPS** (e.g. `~/chama-webpush-watcher`) and install:
    ```sh
-   cd ~/chama-webpush-watcher && npm ci --omit=dev   # or: npm install --omit=dev
+   cd ~/chama-webpush-watcher && npm ci --omit=dev   # installs exactly what package-lock.json records
    ```
 2. **Generate the VAPID pair once** and put it in `.env`:
    ```sh
