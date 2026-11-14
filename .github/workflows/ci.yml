@@ -34,6 +34,10 @@ jobs:
         with:
           # The compatibility test loads the pinned 6.4.20 source from Git.
           fetch-depth: 0
+          # SECURITY: do not leave the job token in .git/config, where every
+          # install script and test that runs afterwards could read it.
+          # Nothing in this job talks to the remote after checkout.
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0

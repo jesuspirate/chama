@@ -30,8 +30,12 @@ on:
       - "v*"
   workflow_dispatch:
 
+# SECURITY: read-only by default. Only the build job, which attaches bundles
+# to the draft release, is granted write (see its `permissions` block). The
+# gates job installs dependencies and runs the test suite, so it must not
+# hold a token that can change releases or tags.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: desktop-release-${{ github.ref }}
@@ -47,6 +51,8 @@ jobs:
         with:
           # The compatibility test loads the pinned 6.4.20 source from Git.
           fetch-depth: 0
+          # SECURITY: keep the job token out of .git/config (see ci.yml).
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
@@ -82,6 +88,11 @@ jobs:
   build:
     name: Build (${{ matrix.label }})
     needs: gates
+    # Needed by the final `gh release` step only, which receives the token
+    # through GH_TOKEN. Checkout does not persist it, so npm install scripts,
+    # cargo build scripts and the bundler never see a write-capable token.
+    permissions:
+      contents: write
     defaults:
       run:
         # bash exists on all three runner OSes (git-bash on Windows) and the
@@ -113,6 +124,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
