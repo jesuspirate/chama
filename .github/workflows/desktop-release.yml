@@ -4,6 +4,8 @@ name: Desktop release
 #
 # Trigger: pushing a release tag (the `scripts/release.sh` lane tags vX.Y.Z),
 # or manually via workflow_dispatch for a smoke build (no release upload).
+# A smoke build on a branch keeps its Windows + Linux installers as run
+# artifacts instead, so they can be downloaded from the run page and tested.
 #
 # Versioning: src-tauri/tauri.conf.json points its `version` at
 # ../package.json, so the bundle version always equals the npm version that
@@ -13,8 +15,9 @@ name: Desktop release
 #
 # SECURITY: same posture as ci.yml — third-party actions are avoided
 # entirely; the only actions used are the same SHA-pinned checkout and
-# setup-node that ci.yml already trusts. Rust comes from the runner's
-# rustup, releases are managed with the preinstalled `gh` CLI.
+# setup-node that ci.yml already trusts, plus GitHub's own SHA-pinned cache
+# and upload-artifact. Rust comes from the runner's rustup, releases are
+# managed with the preinstalled `gh` CLI.
 #
 # Publishing policy: Windows (NSIS) + Linux (deb/AppImage) bundles are
 # attached to the release. The macOS dmg is BUILD-ONLY — it still compiles on
@@ -202,7 +205,15 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          VER="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            # Manual smoke build on a branch: the ref name can hold "/" or
+            # other characters a filename can't, so make it file-safe and add
+            # the short commit so each build's installers are identifiable.
+            SAFE_REF="${GITHUB_REF_NAME//[^A-Za-z0-9._-]/-}"
+            VER="${SAFE_REF}-${GITHUB_SHA::7}"
+          fi
           mkdir -p release-assets
           for f in src-tauri/target/release/bundle/nsis/*.exe; do
             cp "$f" "release-assets/Chama-${VER}-1-Windows-x64-Setup.exe"
@@ -214,6 +225,19 @@ jobs:
             cp "$f" "release-assets/Chama-${VER}-3-Linux-AppImage-any-distro.AppImage"
           done
           echo "Staged:"; ls -la release-assets
+
+      # Smoke builds (any ref that isn't a v* tag) have no release to attach
+      # to, so keep the staged installers on the run itself for testing.
+      - name: Keep installers as run artifacts (smoke builds)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') && runner.os != 'macOS' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: chama-desktop-${{ runner.os }}
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 14
+          # Installers are already compressed; zipping again only costs time.
+          compression-level: 0
 
       - name: Upload to draft GitHub release
         if: startsWith(github.ref, 'refs/tags/v') && runner.os != 'macOS'
