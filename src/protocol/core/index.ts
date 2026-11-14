@@ -19,6 +19,7 @@ export * from "./clock.js";
 export * from "./sim-tag.js";
 export * from "./listing-image-ref.js";
 export * from "./arbiter-pick.js";
+export * from "./arbiter-sortition.js";
 export * from "./bond-announcement.js";
 export * from "./commitment-record.js";
 export * from "./chain-data.js";
