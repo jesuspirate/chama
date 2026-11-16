@@ -238,7 +238,10 @@ export interface ClosingFederation {
 
 export const CLOSING_FEDERATIONS: readonly ClosingFederation[] = [
   { federationId: BLF_FEDERATION_ID, closesOn: "2026-12-15" },
-  { federationId: GBF_FEDERATION_ID, closesOn: "2026-12-15" },
+  // GBF: its operator announced a shutdown by Dec 15 and Fedi says Gbot
+  // federations that don't migrate close Nov 30 to Dec 4. Chama shows the
+  // earliest date so nobody leaves sats there too long (Jet, 2026-11-16).
+  { federationId: GBF_FEDERATION_ID, closesOn: "2026-11-30" },
   { federationId: BP_FEDERATION_ID, closesOn: "2026-12-15" },
   { federationId: PUBLIC_FEDI_APPROVED_FEDERATIONS.find((f) => f.slug === "fedi-orange-club-africa")!.federationId, closesOn: "2026-12-15" },
   { federationId: PUBLIC_FEDI_APPROVED_FEDERATIONS.find((f) => f.slug === "fedi-latnet")!.federationId, closesOn: "2026-12-15" },

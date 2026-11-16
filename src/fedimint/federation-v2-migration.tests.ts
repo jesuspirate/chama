@@ -1,5 +1,5 @@
-// 6.4.35: the closing federations (first BLF, GBF, Bitcoin Principles,
-// Orange Club Africa, LatNet; all 2026-12-15) give way to the new BLF and
+// 6.4.35: the closing federations (first BLF, GBF (by Nov 30), Bitcoin Principles,
+// Orange Club Africa, LatNet; the rest 2026-12-15) give way to the new BLF and
 // Freedom Money. Pins: the new invites name the IDs we ship; old signed trades
 // keep their original federation for every app version; new defaults point at
 // the v2 routes; and no new sats go onto a closing federation, refused before
@@ -44,10 +44,13 @@ assert.equal(config.expectedFederationIdForInvite(FREEDOM_MONEY_FEDERATION_INVIT
 assert.equal(config.expectedFederationIdForInvite(BLF_FEDERATION_INVITE), BLF_FEDERATION_ID, "the first BLF still resolves");
 
 // ── 2. Which federations are closing ──
-for (const id of [BLF_FEDERATION_ID, GBF_FEDERATION_ID, BP_FEDERATION_ID, OCA_ID, LATNET_ID]) {
+for (const id of [BLF_FEDERATION_ID, BP_FEDERATION_ID, OCA_ID, LATNET_ID]) {
   assert.equal(closingFederation(id)?.closesOn, "2026-12-15", `${id.slice(0, 8)} closes 2026-12-15`);
   assert.equal(closingFederation(id.toUpperCase())?.closesOn, "2026-12-15", "case-insensitive");
 }
+// GBF shows the earliest possible shutdown (Fedi: Nov 30 to Dec 4; operator: by Dec 15).
+assert.equal(closingFederation(GBF_FEDERATION_ID)?.closesOn, "2026-11-30", "GBF closes 2026-11-30");
+assert.match(config.closingDateLabel("2026-11-30", "en"), /November 30, 2026|30 November 2026/);
 for (const id of [BLF_V2_FEDERATION_ID, FREEDOM_MONEY_FEDERATION_ID, AFRIBIT_KIBERA_FEDERATION_ID, null, "", "zz"]) {
   assert.equal(closingFederation(id), null, `${String(id).slice(0, 8)} is not closing`);
 }
@@ -59,8 +62,8 @@ assert.equal(config.closingDateLabel("not-a-date", "en"), "not-a-date");
 assert.ok(config.PICKABLE_PRESETS.every((p) => !closingFederation(p.federationId)), "no closing federation is offered");
 assert.ok(config.PICKABLE_PRESETS.some((p) => p.inviteCode === BLF_V2_FEDERATION_INVITE));
 assert.ok(config.PICKABLE_PRESETS.some((p) => p.inviteCode === FREEDOM_MONEY_FEDERATION_INVITE));
-for (const invite of [BLF_FEDERATION_INVITE, GBF_FEDERATION_INVITE, OCA_FEDERATION_INVITE, LATNET_FEDERATION_INVITE]) {
-  assert.ok(config.CURATED_PRESETS.some((p) => p.inviteCode === invite && p.closesOn === "2026-12-15"),
+for (const [invite, closesOn] of [[BLF_FEDERATION_INVITE, "2026-12-15"], [GBF_FEDERATION_INVITE, "2026-11-30"], [OCA_FEDERATION_INVITE, "2026-12-15"], [LATNET_FEDERATION_INVITE, "2026-12-15"]]) {
+  assert.ok(config.CURATED_PRESETS.some((p) => p.inviteCode === invite && p.closesOn === closesOn),
     "a closing federation stays curated (named, listed, routable)");
 }
 assert.deepEqual(registry.getCommunitiesByCountry("US").map((c) => c.slug), ["us-blf"], "one US choice: the new BLF");
@@ -147,7 +150,7 @@ async function preflight(tradeFed: string | undefined, walletFed: string, opts: 
 }
 for (const closingId of [BLF_FEDERATION_ID, GBF_FEDERATION_ID, OCA_ID, LATNET_ID, BP_FEDERATION_ID]) {
   await assert.rejects(preflight(closingId, closingId), (e: any) =>
-    e.code === "FEDERATION_CLOSING" && e.closesOn === "2026-12-15" && /No sats were spent/.test(e.message),
+    e.code === "FEDERATION_CLOSING" && e.closesOn === (closingId === GBF_FEDERATION_ID ? "2026-11-30" : "2026-12-15") && /No sats were spent/.test(e.message),
   `new funding on ${closingId.slice(0, 8)} is refused`);
 }
 await assert.rejects(preflight(undefined, BLF_FEDERATION_ID), (e: any) => e.code === "FEDERATION_CLOSING",
