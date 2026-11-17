@@ -388,7 +388,8 @@ export const COMMUNITY_REGISTRY: Community[] = [
     currency: "USD",
     countries: ["US"],
     languages: ["en"],
-    // GBF closes 2026-12-15 and is going private (Jet, 2026-11-10). Its
+    // GBF closes by 2026-11-30 (earliest date; operator says Dec 15 at the
+    // latest) and is going private (Jet, 2026-11-10/16). Its
     // people move to the new BLF; its signed listings keep meaning GBF.
     federationInvite: BLF_V2_FEDERATION_INVITE,
     historicalFederationInvite: GBF_FEDERATION_INVITE,

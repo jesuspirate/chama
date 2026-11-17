@@ -104,7 +104,8 @@ and routes. Merging, deployment and app release require a release instruction.
 ## Moving to the v2 federations (2026-11-10)
 
 Jet confirmed the new BLF invite above in Fedi, and reported the shutdown
-notices each federation shows in Fedi. All of these close on 2026-12-15:
+notices each federation shows in Fedi. All of these close on 2026-12-15,
+except GBF (see below):
 
 | Federation | ID | Successor named in Fedi | Chama routes its people to |
 |---|---|---|---|
@@ -118,6 +119,12 @@ Liberty Tree (closing 2026-12-04) is a test federation and is not in the app.
 Afribit Kibera and Bitsacco have announced nothing and are unchanged. The
 other public Fedi routes (Victoria BTC, Marigold, E-Cash Club, Bitcoinomad,
 BTC Brasil, Freedom One) are unchanged until their status is known.
+
+GBF update (2026-11-16): its operator announced a shutdown by 2026-12-15 and
+offered a new invite privately, so it has no public successor. Fedi says Gbot
+federations that don't migrate close between Nov 30 and Dec 4. At Jet's
+request, Chama shows GBF's closing date as 2026-11-30, the earliest possible
+date, so nobody leaves sats there too long.
 
 What the app does (one release, Jet's decision 2026-11-10):
 
