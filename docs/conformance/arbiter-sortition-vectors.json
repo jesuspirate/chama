@@ -1,0 +1,74 @@
+{
+  "format": "chama-arbiter-sortition-vectors",
+  "formatVersion": 1,
+  "selectionVersion": 2,
+  "source": "src/protocol/core/arbiter-sortition.tests.ts",
+  "sellerNonce": "4da2eb24ce1bff719f0ec3e06f61b9357bdadad543f443bd91aa7c03f10c950d",
+  "sellerCommitment": "92801f91876b784a8d5381e02d96e6b284d26dcf8c9b031f213e673f43eee08a",
+  "buyerNonce": "a90a67847b779e5ab4f0a21aa4cae60757b7a43319cff7672c8c10dad5020e9f",
+  "eligible": [
+    "187d43f5710296eabf39e77b09150310961a92953298e7bc05d6128caff648a7",
+    "615c0a9d154f73650f465cf5a33acc79783433d1086f6820989d81bfa888b4c1",
+    "948d77a96a1fc42a7c01f7b2b41267e856bc4d0ca2a56a2465c145d14c1f0255",
+    "a85c2465ad8de472b870183b2eadbbd6a5995bfae1c4cbbb1adaa656b8648e37",
+    "cd09f2f51a7e318e9df73fb8e50fb1134d1e45850cac1fae26df258f171b247f",
+    "d3611107c27e939e82516bb0b7b85d5a733c40e947a4691f4381ab974e68a7fc",
+    "d89afb51cd7debb74a0f04545a980be239d18aaaa416b6afbe3c397310396ee4",
+    "e782a0f704f12c38a471791bec604fe1d4c49c105bbc29bce7b6bdb1f817e1e3",
+    "e8d0dab33b28726dc3dd4ef4473b26057a67afa0861ad903b68304a7d803ea43"
+  ],
+  "vectors": [
+    {
+      "name": "first-draw",
+      "escrowId": "esc-vector-1",
+      "round": 0,
+      "seed": "d6c2dbf3ccca13095ad3d213a89d571e7d0752f0ede5397f0e7fec1d221a43a2",
+      "arbiter": "948d77a96a1fc42a7c01f7b2b41267e856bc4d0ca2a56a2465c145d14c1f0255",
+      "index": 2,
+      "panel3": [
+        "e782a0f704f12c38a471791bec604fe1d4c49c105bbc29bce7b6bdb1f817e1e3",
+        "e8d0dab33b28726dc3dd4ef4473b26057a67afa0861ad903b68304a7d803ea43",
+        "d89afb51cd7debb74a0f04545a980be239d18aaaa416b6afbe3c397310396ee4"
+      ]
+    },
+    {
+      "name": "redraw-round-1",
+      "escrowId": "esc-vector-1",
+      "round": 1,
+      "seed": "7b3c24f380f4da85f71699a74e0d14da40d6d095b249ed82cad4fbb3c2fb969f",
+      "arbiter": "187d43f5710296eabf39e77b09150310961a92953298e7bc05d6128caff648a7",
+      "index": 0,
+      "panel3": [
+        "615c0a9d154f73650f465cf5a33acc79783433d1086f6820989d81bfa888b4c1",
+        "d89afb51cd7debb74a0f04545a980be239d18aaaa416b6afbe3c397310396ee4",
+        "e8d0dab33b28726dc3dd4ef4473b26057a67afa0861ad903b68304a7d803ea43"
+      ]
+    },
+    {
+      "name": "other-escrow",
+      "escrowId": "esc-vector-2",
+      "round": 0,
+      "seed": "6256fe60eaddbe6087e0c381a19c9523309e679509dee39379a6a7b2239a0c3d",
+      "arbiter": "a85c2465ad8de472b870183b2eadbbd6a5995bfae1c4cbbb1adaa656b8648e37",
+      "index": 3,
+      "panel3": [
+        "d3611107c27e939e82516bb0b7b85d5a733c40e947a4691f4381ab974e68a7fc",
+        "d89afb51cd7debb74a0f04545a980be239d18aaaa416b6afbe3c397310396ee4",
+        "e8d0dab33b28726dc3dd4ef4473b26057a67afa0861ad903b68304a7d803ea43"
+      ]
+    },
+    {
+      "name": "unicode-escrow-id",
+      "escrowId": "chama-ñ-✓",
+      "round": 0,
+      "seed": "ca3718abd7cc00d52f887139416444691dc121d2715708a9213fc631d78f0094",
+      "arbiter": "e782a0f704f12c38a471791bec604fe1d4c49c105bbc29bce7b6bdb1f817e1e3",
+      "index": 7,
+      "panel3": [
+        "948d77a96a1fc42a7c01f7b2b41267e856bc4d0ca2a56a2465c145d14c1f0255",
+        "187d43f5710296eabf39e77b09150310961a92953298e7bc05d6128caff648a7",
+        "a85c2465ad8de472b870183b2eadbbd6a5995bfae1c4cbbb1adaa656b8648e37"
+      ]
+    }
+  ]
+}
