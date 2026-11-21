@@ -153,6 +153,8 @@ export const bond: Record<string, string> = {
   "bond.converterWaiting": "Inasubiri viwango vya soko",
   "bond.converterDisclaimer": "Ni makadirio; bei na viwango vya kubadilisha fedha vinabadilika.",
   "bond.converterCurrencyShort": "Sarafu",
+  "bond.converterCurrencySearch": "Tafuta kwa jina, msimbo au nchi",
+  "bond.converterCurrencyNoMatch": "Hakuna sarafu inayolingana. Jaribu nchi au msimbo, kama KES.",
   "bond.converterYouType": "Kiasi kwa {unit}",
   "bond.converterSwapShort": "Geuza",
   "bond.converterThatIs": "Hiyo ni takriban",

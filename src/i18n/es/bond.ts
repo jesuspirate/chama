@@ -156,6 +156,8 @@ export const bond: Record<string, string> = {
   "bond.converterWaiting": "Esperando tasas del mercado",
   "bond.converterDisclaimer": "Una estimación; los precios y tipos de cambio varían.",
   "bond.converterCurrencyShort": "Moneda",
+  "bond.converterCurrencySearch": "Busca por nombre, código o país",
+  "bond.converterCurrencyNoMatch": "Ninguna moneda coincide. Prueba con un país o un código, como KES.",
   "bond.converterYouType": "Cantidad en {unit}",
   "bond.converterSwapShort": "Invertir",
   "bond.converterThatIs": "Eso es aproximadamente",
