@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { defaultCurrencyForCommunity } from "../../communities/currency.js";
 import { COUNTRY_CURRENCY } from "../../communities/country-currency.js";
+import { describeCurrency, rankCurrencies } from "../../communities/currency-names.js";
 import { formatFiatAmount } from "../amount-display.js";
 import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
 import { useFiatRates } from "../hooks/useFiatRates.js";
@@ -48,6 +49,25 @@ export function BitcoinConverter({ communitySlug, variant = "card" }: {
       .filter((item, index, all) => available.has(item) && all.indexOf(item) === index)
       .sort((a, b) => a === homeCurrency ? -1 : b === homeCurrency ? 1 : a.localeCompare(b));
   }, [fiatRates.rates, homeCurrency]);
+
+  // Jet (2026-11-21): bare codes (AED, AFN, ALL…) told most people nothing.
+  // Each row now names the currency in the app's language, with its symbol
+  // and flag, and the list can be searched. The value is still the code.
+  const currencyOptions = useMemo(() => currencies.map(code => {
+    const about = describeCurrency(code, lang);
+    return {
+      value: code,
+      label: code,
+      detail: about.name === about.code ? undefined : about.name,
+      leading: about.flag ?? undefined,
+      trailing: about.symbol ?? undefined,
+    };
+  }), [currencies, lang]);
+  const currencySearch = useMemo(() => ({
+    placeholder: t("bond.converterCurrencySearch"),
+    noMatches: t("bond.converterCurrencyNoMatch"),
+    rank: (query: string) => rankCurrencies(currencies, query, lang),
+  }), [currencies, lang, t]);
 
   const rate = currency === "USD" ? 1 : fiatRates.rates[currency];
   const fiatPerBtc = price.usd && rate ? price.usd * rate : null;
@@ -102,7 +122,7 @@ export function BitcoinConverter({ communitySlug, variant = "card" }: {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, marginBottom: 12 }}>
         <label htmlFor="chama-converter-currency" style={label}>{t("bond.converterCurrencyShort")}</label>
         <SheetSelect id="chama-converter-currency" value={currency} onChange={changeCurrency} title={t("bond.converterCurrencyShort")}
-          options={currencies.map(code => ({ value: code, label: code }))}
+          options={currencyOptions} search={currencySearch}
           style={{ ...inputStyle, width: "auto", minWidth: 96, minHeight: T.size.touch, padding: "0 12px", fontFamily: T.sans, fontSize: T.fs.body, fontWeight: 700 }} />
       </div>
 

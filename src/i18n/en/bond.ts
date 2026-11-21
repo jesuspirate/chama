@@ -156,6 +156,8 @@ export const bond: Record<string, string> = {
   "bond.converterWaiting": "Waiting for market rates",
   "bond.converterDisclaimer": "An estimate; prices and exchange rates move.",
   "bond.converterCurrencyShort": "Currency",
+  "bond.converterCurrencySearch": "Search by name, code or country",
+  "bond.converterCurrencyNoMatch": "No currency matches that. Try a country or a code, like KES.",
   "bond.converterYouType": "Amount in {unit}",
   "bond.converterSwapShort": "Swap",
   "bond.converterThatIs": "That’s about",
